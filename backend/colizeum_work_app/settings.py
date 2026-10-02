@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'users.apps.UsersConfig',
     'computers.apps.ComputersConfig',
+    'reports.apps.ReportsConfig',
     'api.apps.ApiConfig',
 ]
 
@@ -91,6 +92,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+MEDIA_ROOT = BASE_DIR / 'media'
+
+MEDIA_URL = '/media/'
 
 AUTH_USER_MODEL = 'users.User'
 

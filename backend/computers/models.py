@@ -96,6 +96,11 @@ class Station(models.Model):
         blank=True,
         null=True
     )
+    info = models.TextField(
+        verbose_name='Информация',
+        blank=True,
+        null=True
+    )
 
     class Meta:
         verbose_name = 'Игровое место'
@@ -104,3 +109,35 @@ class Station(models.Model):
 
     def __str__(self):
         return f'ПК №{self.club_number}'
+
+
+class PlayStation(models.Model):
+    club_number = models.PositiveSmallIntegerField(
+        verbose_name='Номер PlayStation',
+        unique=True,
+        blank=False,
+    )
+    serial_number = models.CharField(
+        verbose_name='Серийный номер',
+        unique=True,
+        blank=False,
+        max_length=SN_MAX_LENGTH
+    )
+    warranty_until = models.DateTimeField(
+        verbose_name='Гарантия до',
+        blank=True,
+        null=True
+    )
+    info = models.TextField(
+        verbose_name='Информация',
+        blank=True,
+        null=True
+    )
+
+    class Meta:
+        verbose_name = 'PlayStation'
+        verbose_name_plural = 'PlayStation'
+        ordering = ('serial_number',)
+
+    def __str__(self):
+        return f'PlayStation | {self.serial_number}'

@@ -1,0 +1,7 @@
+{% if not is_popup %}
+<nav class="reports-navigation" aria-label="Отчёты и расходы">
+  {% for item in reports_navigation %}
+    <a href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+  {% endfor %}
+</nav>
+{% endif %}

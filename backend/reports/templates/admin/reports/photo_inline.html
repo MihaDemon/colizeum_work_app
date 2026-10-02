@@ -1,0 +1,52 @@
+{% load i18n %}
+<div class="js-inline-admin-formset inline-group reports-photos"
+     id="{{ inline_admin_formset.formset.prefix }}-group"
+     data-inline-type="stacked"
+     data-inline-formset="{{ inline_admin_formset.inline_formset_data }}">
+  <fieldset class="module" aria-labelledby="{{ inline_admin_formset.formset.prefix }}-heading">
+    <div class="reports-photos-heading">
+      <div>
+        <h2 id="{{ inline_admin_formset.formset.prefix }}-heading">Фотографии</h2>
+        <p>{% if inline_admin_formset.opts.min_num %}Добавьте хотя бы одну фотографию. Можно приложить несколько.{% else %}Приложите фотографии при необходимости. Это необязательно.{% endif %}</p>
+      </div>
+      <span class="reports-photo-counter" data-photo-counter hidden></span>
+    </div>
+    {{ inline_admin_formset.formset.management_form }}
+    {{ inline_admin_formset.formset.non_form_errors }}
+    <div class="reports-photo-grid">
+      {% for inline_admin_form in inline_admin_formset %}
+        <div class="inline-related{% if inline_admin_form.original %} has_original{% endif %}{% if forloop.last and inline_admin_formset.has_add_permission %} empty-form last-related{% endif %}"
+             id="{{ inline_admin_formset.formset.prefix }}-{% if forloop.last and inline_admin_formset.has_add_permission %}empty{% else %}{{ forloop.counter0 }}{% endif %}"
+             {% if inline_admin_form.original.image %}data-has-photo="true"{% endif %}>
+          <h3>
+            <span class="inline_label">Фото #{{ forloop.counter }}</span>
+            {% if inline_admin_formset.formset.can_delete and inline_admin_form.original and inline_admin_formset.has_delete_permission %}
+              <span class="delete">{{ inline_admin_form.deletion_field.field }} {{ inline_admin_form.deletion_field.label_tag }}</span>
+            {% endif %}
+          </h3>
+          <div class="reports-photo-preview">
+            {% if inline_admin_form.original.image %}
+              <a href="{{ inline_admin_form.original.image.url }}" target="_blank" rel="noopener" aria-label="Открыть фотографию {{ forloop.counter }}">
+                <img src="{{ inline_admin_form.original.image.url }}" alt="Фотография {{ forloop.counter }}" loading="lazy" width="320" height="200">
+              </a>
+            {% else %}
+              <div class="reports-photo-placeholder">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/></svg>
+                <span>Выберите фотографию</span>
+              </div>
+            {% endif %}
+          </div>
+          {{ inline_admin_form.form.non_field_errors }}
+          <div class="reports-photo-upload field-image">
+            {% if inline_admin_formset.has_change_permission or not inline_admin_form.original and inline_admin_formset.has_add_permission %}
+              {{ inline_admin_form.form.image.label_tag }}
+              {{ inline_admin_form.form.image.errors }}
+              {{ inline_admin_form.form.image }}
+            {% endif %}
+          </div>
+          {% for field in inline_admin_form.form.hidden_fields %}{{ field }}{% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </fieldset>
+</div>
