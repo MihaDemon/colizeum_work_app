@@ -1,0 +1,53 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls %}
+
+{% block title %}{% if errors %}{% translate "Error:" %} {% endif %}{{ reports_form_title }} | Управление клубом{% endblock %}
+
+{% block responsive %}
+  {{ block.super }}
+  {% include "admin/reports/includes/styles.html" %}
+{% endblock %}
+
+{% block branding %}<div id="site-name"><a href="{% url 'admin:index' %}">Управление клубом</a></div>{% endblock %}
+
+{% block content_title %}
+  <h1>{{ reports_form_title }}</h1>
+{% endblock %}
+
+{% block breadcrumbs %}
+  <ol class="breadcrumbs">
+    <li><a href="{% url 'admin:index' %}">{% translate 'Home' %}</a></li>
+    <li><a href="{% url 'admin:app_list' app_label=opts.app_label %}">Отчёты и расходы</a></li>
+    <li>{% if has_view_permission %}<a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural }}</a>{% else %}{{ opts.verbose_name_plural }}{% endif %}</li>
+    <li aria-current="page">{{ reports_form_title }}</li>
+  </ol>
+{% endblock %}
+{% block content_subtitle %}
+  <p class="reports-page-description">{% if add %}{% if is_report %}Закройте смену: внесите суммы и приложите фотографии.{% else %}Укажите сумму и назначение расхода. Фотографии необязательны.{% endif %}{% else %}{{ original.date|date:"d E Y, H:i" }}{% if original.admin %} · {{ original.admin }}{% endif %}{% endif %}</p>
+{% endblock %}
+
+{% block form_top %}{% include "admin/reports/includes/navigation.html" %}{% endblock %}
+
+{% block field_sets %}
+  <div class="reports-editor">
+    <div class="reports-editor-fields">{{ block.super }}</div>
+    <aside class="reports-editor-summary" aria-labelledby="reports-summary-heading">
+      <h2 id="reports-summary-heading">{% if is_report %}Поступления за смену{% else %}Сумма расхода{% endif %}</h2>
+      <output class="reports-summary-amount" data-money-total aria-live="polite">{% if is_report %}{{ receipt_total }}{% else %}{{ expense_total|default:"0,00" }}{% endif %} ₽</output>
+      {% if is_report %}
+        <dl class="reports-breakdown">
+          <div><dt>Безнал</dt><dd data-money-field="cards">{{ original.cards|default:"0"|floatformat:"2g" }} ₽</dd></div>
+          <div><dt>СБП</dt><dd data-money-field="spb">{{ original.spb|default:"0"|floatformat:"2g" }} ₽</dd></div>
+          <div><dt>Наличные</dt><dd data-money-field="cash">{{ original.cash|default:"0"|floatformat:"2g" }} ₽</dd></div>
+        </dl>
+        <p>Остаток в кассе и инкассация учитываются отдельно и не входят в поступления.</p>
+      {% else %}
+        <p>Опишите назначение расхода в комментарии, чтобы его было проще найти.</p>
+      {% endif %}
+      <div class="reports-photo-requirement">
+        <strong>{% if is_report %}Минимум одна фотография{% else %}Фотографии по желанию{% endif %}</strong>
+        <p>{% if is_report %}Приложите фото к отчёту перед сохранением.{% else %}Расход можно сохранить без фотографий.{% endif %}</p>
+      </div>
+    </aside>
+  </div>
+{% endblock %}

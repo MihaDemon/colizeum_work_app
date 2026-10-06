@@ -1,0 +1,276 @@
+/* Scope the reports workspace to its own admin routes. */
+.app-reports {
+    --reports-bg: #f4f5f2;
+    --reports-surface: #ffffff;
+    --reports-subtle: #edf1ec;
+    --reports-border: #d7ded8;
+    --reports-ink: #25352c;
+    --reports-muted: #5b6b61;
+    --reports-accent: #24634b;
+    --reports-accent-hover: #174932;
+    --reports-accent-soft: #e5f0e8;
+    --reports-on-accent: #ffffff;
+    --reports-danger: #a72e35;
+    --body-bg: var(--reports-bg);
+    --body-fg: var(--reports-ink);
+    --body-quiet-color: var(--reports-muted);
+    --body-medium-color: var(--reports-ink);
+    --darkened-bg: var(--reports-subtle);
+    --hairline-color: var(--reports-border);
+    --border-color: var(--reports-border);
+    --link-fg: var(--reports-accent);
+    --link-hover-color: var(--reports-accent-hover);
+    --link-selected-fg: var(--reports-accent);
+    --header-bg: var(--reports-surface);
+    --header-color: var(--reports-ink);
+    --header-link-color: var(--reports-ink);
+    --breadcrumbs-bg: var(--reports-bg);
+    --breadcrumbs-fg: var(--reports-muted);
+    --breadcrumbs-link-fg: var(--reports-muted);
+    --selected-bg: var(--reports-subtle);
+    --selected-row: var(--reports-accent-soft);
+    --button-bg: var(--reports-accent);
+    --button-hover-bg: var(--reports-accent-hover);
+    --button-fg: var(--reports-on-accent);
+    --default-button-bg: var(--reports-accent);
+    --default-button-hover-bg: var(--reports-accent-hover);
+    --error-fg: var(--reports-danger);
+    background: var(--reports-bg);
+    color: var(--reports-ink);
+    font-size: 14px;
+    line-height: 1.5;
+    accent-color: var(--reports-accent);
+}
+
+html[data-theme="dark"] .app-reports {
+    --reports-bg: #17211c;
+    --reports-surface: #202d25;
+    --reports-subtle: #27382e;
+    --reports-border: #3b5143;
+    --reports-ink: #e5ece5;
+    --reports-muted: #afc1b4;
+    --reports-accent: #a1d4b3;
+    --reports-accent-hover: #c2e6cd;
+    --reports-accent-soft: #314b39;
+    --reports-on-accent: #14281b;
+    --reports-danger: #ffadb1;
+}
+
+@media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] .app-reports {
+        --reports-bg: #17211c;
+        --reports-surface: #202d25;
+        --reports-subtle: #27382e;
+        --reports-border: #3b5143;
+        --reports-ink: #e5ece5;
+        --reports-muted: #afc1b4;
+        --reports-accent: #a1d4b3;
+        --reports-accent-hover: #c2e6cd;
+        --reports-accent-soft: #314b39;
+        --reports-on-accent: #14281b;
+        --reports-danger: #ffadb1;
+    }
+}
+
+.app-reports ::selection { background: var(--reports-accent); color: var(--reports-on-accent); }
+.app-reports :focus-visible { outline: 2px solid var(--reports-accent); outline-offset: 3px; }
+.app-reports a { text-underline-offset: 3px; }
+.app-reports #header { padding: 20px 28px; border-bottom: 1px solid var(--reports-border); }
+.app-reports #site-name { font-size: 18px; font-weight: 650; letter-spacing: -.02em; }
+.app-reports #site-name a:link, .app-reports #site-name a:visited { color: var(--reports-ink); }
+.app-reports #header #user-tools { color: var(--reports-muted); font-size: 11px; }
+.app-reports #header #user-tools a, .app-reports #logout-form button { color: var(--reports-muted); }
+.app-reports .breadcrumbs { padding: 14px 28px; font-size: 12px; }
+.app-reports .breadcrumbs a { color: var(--reports-muted); }
+.app-reports #content { padding: 26px 32px 40px; }
+.app-reports #content h1 { margin: 0; color: var(--reports-ink); font-size: 28px; font-weight: 650; letter-spacing: -.025em; }
+.app-reports .titles-and-tools { margin-bottom: 24px; gap: 16px; }
+.app-reports .reports-page-description { color: var(--reports-muted); margin: 8px 0 0; font-size: 14px; max-width: 72ch; }
+.app-reports .object-tools { margin-top: 0; }
+.app-reports .object-tools a { background: var(--reports-accent); color: var(--reports-on-accent); padding: 11px 18px; border-radius: 6px; font-size: 12px; }
+.app-reports .object-tools a:hover { background-color: var(--reports-accent-hover); }
+.app-reports .object-tools a.addlink { padding-right: 32px; }
+.app-reports #nav-sidebar { background: var(--reports-surface); border-right: 1px solid var(--reports-border); }
+.app-reports #nav-sidebar .module { margin: 8px 12px 20px; background: transparent; }
+.app-reports #nav-sidebar caption { background: transparent; border: 0; padding: 10px 8px; font-size: 10px; font-weight: 650; letter-spacing: .04em; }
+.app-reports #nav-sidebar caption a { color: var(--reports-muted); }
+.app-reports #nav-sidebar th, .app-reports #nav-sidebar td { background: transparent; border: 0; padding: 7px 8px; font-size: 12px; }
+.app-reports #nav-sidebar .current-model { background: var(--reports-accent-soft); }
+.app-reports #nav-sidebar .current-model th a { color: var(--reports-accent); font-weight: 650; }
+.app-reports #nav-filter { box-sizing: border-box; width: calc(100% - 24px); margin: 12px; padding: 10px; border-radius: 6px; }
+.app-reports #toggle-nav-sidebar { background: var(--reports-bg); color: var(--reports-muted); border: 0; }
+
+.app-reports .reports-navigation { display: flex; gap: 24px; border-bottom: 1px solid var(--reports-border); margin-bottom: 24px; }
+.app-reports .reports-navigation a { color: var(--reports-muted); padding: 0 2px 12px; border-bottom: 2px solid transparent; font-weight: 550; font-size: 14px; }
+.app-reports .reports-navigation a:hover { color: var(--reports-accent); }
+.app-reports .reports-navigation a[aria-current] { color: var(--reports-accent); border-bottom-color: var(--reports-accent); }
+.app-reports .reports-selection { margin-bottom: 26px; padding-bottom: 24px; border-bottom: 1px solid var(--reports-border); }
+.app-reports .reports-selection-caption { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.app-reports .reports-selection-caption h2 { margin: 0; font-size: 14px; font-weight: 650; color: var(--reports-ink); }
+.app-reports .reports-selection-caption span { font-size: 12px; color: var(--reports-muted); }
+.app-reports .reports-totals { display: flex; flex-wrap: wrap; gap: 16px 36px; margin: 0; }
+.app-reports .reports-totals > div { min-width: 115px; }
+.app-reports .reports-totals dt { font-size: 12px; color: var(--reports-muted); margin-bottom: 5px; }
+.app-reports .reports-totals dd { font-size: 18px; font-variant-numeric: tabular-nums; margin: 0; font-weight: 550; }
+.app-reports .reports-total-primary dd { color: var(--reports-accent); font-weight: 700; }
+.app-reports #changelist { background: var(--reports-surface); border: 1px solid var(--reports-border); border-radius: 12px; overflow: hidden; }
+.app-reports #changelist #toolbar { margin-bottom: 0; border-bottom: 1px solid var(--reports-border); background: var(--reports-surface); padding: 16px 20px; }
+.app-reports #toolbar #searchbar { width: min(320px, 48vw); height: 42px; padding: 10px 12px; }
+.app-reports #toolbar #searchbar:focus { border-color: var(--reports-accent); }
+.app-reports #toolbar form input[type="submit"] { padding: 10px 16px; min-height: 42px; border: 1px solid var(--reports-border); background: var(--reports-subtle); color: var(--reports-ink); border-radius: 6px; box-shadow: none; }
+.app-reports #toolbar .help { color: var(--reports-muted); margin-top: 8px; }
+.app-reports #changelist .actions { background: var(--reports-subtle); padding: 12px 20px; color: var(--reports-muted); }
+.app-reports #changelist .actions select { padding: 7px 10px; height: auto; }
+.app-reports #changelist .actions button { padding: 8px 12px; border-radius: 5px; }
+.app-reports #changelist .toplinks { margin: 0; padding: 12px 20px; border-bottom: 1px solid var(--reports-border); }
+.app-reports #changelist table thead th { background: var(--reports-subtle); color: var(--reports-muted); padding: 14px 10px; font-size: 11px; }
+.app-reports #changelist table thead th .text a, .app-reports #changelist table thead th .text span { padding: 0; }
+.app-reports #changelist table thead th a { color: var(--reports-muted); }
+.app-reports #changelist table tbody td, .app-reports #changelist table tbody th { padding: 16px 12px; font-size: 13px; vertical-align: middle; border-bottom: 1px solid var(--reports-border); }
+.app-reports #changelist table tbody tr { background: var(--reports-surface); }
+.app-reports #changelist table tbody tr:hover { background: var(--reports-subtle); }
+.app-reports #changelist table tbody tr.selected { background: var(--reports-accent-soft); }
+.app-reports .field-recorded_at { min-width: 114px; }
+.app-reports .reports-date { display: block; font-weight: 600; white-space: nowrap; }
+.app-reports .reports-time { display: block; color: var(--reports-muted); font-size: 11px; font-weight: 400; margin-top: 3px; }
+.app-reports .reports-shift { display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 5px; font-size: 12px; font-weight: 550; background: var(--reports-accent-soft); color: var(--reports-accent); }
+.app-reports .reports-shift-night { background: var(--reports-subtle); color: var(--reports-ink); }
+.app-reports .field-receipts, .app-reports .field-card_amount, .app-reports .field-sbp_amount, .app-reports .field-cash_amount, .app-reports .field-expense_amount { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+.app-reports .reports-money-strong { font-weight: 650; }
+.app-reports .reports-photo-count { color: var(--reports-muted); font-variant-numeric: tabular-nums; }
+.app-reports #changelist-filter { background: var(--reports-surface); border-left: 1px solid var(--reports-border); flex: 0 0 200px; margin-left: 0; }
+.app-reports #changelist .changelist-form-container:has(#changelist-filter) > div { max-width: calc(100% - 201px); }
+.app-reports #changelist-filter h2 { background: transparent; color: var(--reports-ink); padding: 16px 20px; border-bottom: 1px solid var(--reports-border); font-size: 13px; text-transform: none; }
+.app-reports #changelist-filter h3 { font-size: 12px; color: var(--reports-muted); margin: 20px 20px 12px; }
+.app-reports #changelist-filter details { margin: 0 20px; padding: 16px 0; border-bottom: 1px solid var(--reports-border); }
+.app-reports #changelist-filter summary { font-size: 12px; font-weight: 600; }
+.app-reports #changelist-filter ul { padding: 0; margin-top: 12px; }
+.app-reports #changelist-filter li { margin: 4px 0; padding: 4px 8px; }
+.app-reports #changelist-filter li.selected { background: var(--reports-accent-soft); border-radius: 4px; border: 0; }
+.app-reports #changelist-filter a { font-size: 12px; }
+.app-reports #changelist .paginator { border: 0; background: var(--reports-surface); padding: 16px 20px; }
+.app-reports .reports-empty { padding: 48px 24px; }
+.app-reports .reports-empty h2 { font-size: 20px; color: var(--reports-ink); margin-top: 0; }
+.app-reports .reports-empty p { color: var(--reports-muted); max-width: 65ch; }
+
+.app-reports .reports-editor { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 28px; align-items: start; margin-bottom: 28px; }
+.app-reports .reports-editor-fields { min-width: 0; }
+.app-reports .reports-editor-fields > fieldset { background: var(--reports-surface); border: 1px solid var(--reports-border); border-radius: 12px; margin: 0 0 20px; padding: 20px 22px; }
+.app-reports .reports-editor-fields .fieldset-heading { margin: 0 0 18px; padding: 0; border: 0; background: none; color: var(--reports-ink); font-size: 15px; font-weight: 650; }
+.app-reports .reports-editor-fields .form-row { padding: 0; margin-top: 14px; border: 0; overflow: visible; }
+.app-reports .reports-editor-fields .form-multiline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.app-reports .reports-payments .form-multiline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.app-reports .reports-editor-fields .fieldBox { min-width: 0; width: auto; float: none; }
+.app-reports .reports-editor-fields .flex-container { gap: 8px; align-items: stretch; }
+.app-reports .reports-editor-fields .form-row > .flex-container { width: 100%; min-width: 0; max-width: 100%; }
+.app-reports .reports-editor-fields label { width: auto; color: var(--reports-muted); font-size: 12px; font-weight: 500; }
+.app-reports input, .app-reports select, .app-reports textarea { box-sizing: border-box; background: var(--reports-surface); color: var(--reports-ink); border-color: var(--reports-border); border-radius: 6px; caret-color: var(--reports-accent); }
+.app-reports input::placeholder, .app-reports textarea::placeholder { color: var(--reports-muted); opacity: 1; }
+.app-reports .reports-editor-fields input[type="number"], .app-reports .reports-editor-fields select, .app-reports .reports-editor-fields textarea { width: 100%; padding: 11px 12px; min-height: 42px; font-size: 14px; }
+.app-reports .reports-editor-fields input[type="number"] { font-variant-numeric: tabular-nums; }
+.app-reports .reports-editor-fields input:focus, .app-reports .reports-editor-fields select:focus, .app-reports .reports-editor-fields textarea:focus { border-color: var(--reports-accent); }
+.app-reports .reports-editor-fields textarea { resize: vertical; min-height: 112px; max-width: 100%; }
+.app-reports .reports-editor-fields .readonly { padding: 0; color: var(--reports-muted); font-size: 13px; overflow-wrap: anywhere; }
+.app-reports .reports-editor-fields .related-widget-wrapper { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; float: none; }
+.app-reports .reports-editor-fields .related-widget-wrapper select { flex: 1 1 140px; }
+.app-reports .reports-editor-fields .related-widget-wrapper-link { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
+.app-reports .reports-meta .radiolist { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-reports .reports-meta .radiolist label { display: flex; align-items: center; gap: 6px; padding: 10px 12px; min-height: 20px; border: 1px solid var(--reports-border); border-radius: 6px; color: var(--reports-ink); }
+.app-reports .reports-meta .radiolist label:has(input:checked) { background: var(--reports-accent-soft); border-color: var(--reports-accent); color: var(--reports-accent); }
+.app-reports .reports-meta .radiolist input { margin: 0; }
+.app-reports .reports-editor-summary { position: sticky; top: 24px; padding: 22px; background: var(--reports-subtle); border-radius: 12px; }
+.app-reports .reports-editor-summary h2 { margin: 0 0 12px; color: var(--reports-ink); font-size: 14px; font-weight: 600; }
+.app-reports .reports-summary-amount { display: block; font-size: 25px; font-weight: 650; letter-spacing: -.02em; color: var(--reports-accent); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; line-height: 1.3; }
+.app-reports .reports-editor-summary p { color: var(--reports-muted); font-size: 12px; line-height: 1.6; }
+.app-reports .reports-breakdown { margin: 20px 0; }
+.app-reports .reports-breakdown > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--reports-border); font-size: 12px; }
+.app-reports .reports-breakdown dt { color: var(--reports-muted); }
+.app-reports .reports-breakdown dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.app-reports .reports-photo-requirement { padding-top: 18px; margin-top: 22px; border-top: 1px solid var(--reports-border); }
+.app-reports .reports-photo-requirement strong { font-size: 13px; font-weight: 600; }
+.app-reports .reports-photo-requirement p { margin: 6px 0 0; }
+
+.app-reports .reports-photos { margin: 0 0 28px; }
+.app-reports .reports-photos > fieldset { background: transparent; }
+.app-reports .reports-photos-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 0 0 18px; }
+.app-reports .reports-photos-heading h2 { color: var(--reports-ink); background: none; margin: 0; padding: 0; font-size: 18px; font-weight: 650; text-transform: none; }
+.app-reports .reports-photos-heading p { color: var(--reports-muted); margin: 6px 0 0; font-size: 13px; }
+.app-reports .reports-photo-counter { font-size: 12px; color: var(--reports-muted); white-space: nowrap; }
+.app-reports .reports-photo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.app-reports .reports-photo-grid .inline-related { background: var(--reports-surface); border: 1px solid var(--reports-border); border-radius: 12px; padding: 14px; min-width: 0; }
+.app-reports .reports-photo-grid .empty-form { display: none; }
+.app-reports .reports-photo-grid h3 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; background: none; border: 0; font-size: 12px; color: var(--reports-ink); padding: 0; margin: 0 0 12px; }
+.app-reports .reports-photo-grid h3 .delete { display: inline-flex; align-items: center; font-weight: 400; float: none; }
+.app-reports .reports-photo-grid h3 label { color: var(--reports-danger); font-size: 11px; }
+.app-reports .reports-photo-preview { height: 180px; background: var(--reports-subtle); border-radius: 6px; overflow: hidden; }
+.app-reports .reports-photo-preview a { display: block; height: 100%; }
+.app-reports .reports-photo-preview img { display: block; height: 100%; width: 100%; object-fit: contain; }
+.app-reports .reports-photo-placeholder { display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; height: 100%; color: var(--reports-muted); font-size: 12px; }
+.app-reports .reports-photo-upload { margin-top: 12px; }
+.app-reports .reports-photo-upload > label { display: block; color: var(--reports-muted); margin-bottom: 8px; font-size: 12px; }
+.app-reports .reports-photo-upload input[type="file"] { max-width: 100%; width: 100%; font-size: 11px; border: 0; }
+.app-reports .reports-photo-upload input::file-selector-button { border: 1px solid var(--reports-border); background: var(--reports-subtle); color: var(--reports-ink); padding: 8px; border-radius: 5px; cursor: pointer; margin-right: 8px; }
+.app-reports .reports-photo-upload input::file-selector-button:hover { background: var(--reports-accent-soft); }
+.app-reports .reports-photo-upload .file-upload { margin: 0; overflow-wrap: anywhere; font-size: 11px; color: var(--reports-muted); }
+.app-reports .reports-photo-upload .file-upload a { display: inline; }
+.app-reports .reports-photo-grid .add-row { grid-column: 1 / -1; background: none; border: 0; padding: 0; }
+.app-reports .reports-photo-grid .add-row a { display: inline-block; padding: 10px 16px 10px 30px; border: 1px solid var(--reports-border); border-radius: 6px; background-color: var(--reports-surface); background-position: 12px center; font-size: 13px; }
+.app-reports .reports-photo-grid .inline-deletelink { background: none; width: auto; height: auto; font-size: 11px; color: var(--reports-danger); }
+.app-reports .reports-photo-deleted .reports-photo-preview { opacity: .4; }
+.app-reports .reports-photo-deleted .inline_label { text-decoration: line-through; }
+.app-reports .submit-row { background: var(--reports-surface); border: 1px solid var(--reports-border); border-radius: 12px; padding: 16px; gap: 12px; overflow: visible; }
+.app-reports .submit-row input { min-height: 42px; height: auto; padding: 12px 16px; background: var(--reports-subtle); color: var(--reports-ink); border: 1px solid var(--reports-border); text-transform: none; border-radius: 6px; }
+.app-reports .submit-row input.default { background: var(--reports-accent); color: var(--reports-on-accent); border-color: var(--reports-accent); text-transform: none; }
+.app-reports .submit-row input:hover { background: var(--reports-accent-soft); }
+.app-reports .submit-row input.default:hover { background: var(--reports-accent-hover); }
+.app-reports .submit-row .deletelink { background: none; color: var(--reports-danger); height: auto; align-self: center; }
+.app-reports .submit-row .deletelink:hover { background: var(--reports-subtle); color: var(--reports-danger); }
+.app-reports .errorlist { color: var(--reports-danger); background: var(--reports-surface); border: 1px solid var(--reports-danger); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
+.app-reports .errornote { background: var(--reports-surface); border-color: var(--reports-danger); color: var(--reports-danger); border-radius: 6px; }
+.app-reports .errors input, .app-reports .errors select, .app-reports .errors textarea { border-color: var(--reports-danger); }
+.app-reports input:disabled, .app-reports select:disabled, .app-reports button:disabled { opacity: .6; cursor: not-allowed; }
+
+@media (max-width: 1200px) {
+    .app-reports #content { padding: 24px; }
+    .app-reports .reports-editor { grid-template-columns: minmax(0, 1fr) 240px; gap: 20px; }
+    .app-reports .reports-photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .app-reports #changelist table tbody td, .app-reports #changelist table tbody th { padding: 14px 10px; }
+}
+
+@media (max-width: 1024px) {
+    .app-reports .reports-editor { grid-template-columns: minmax(0, 1fr); }
+    .app-reports .reports-editor-summary { position: static; }
+    .app-reports .reports-breakdown { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0; }
+    .app-reports .reports-breakdown > div { min-width: 150px; }
+    .app-reports .reports-photo-requirement { padding-top: 12px; margin-top: 12px; }
+}
+
+@media (max-width: 767px) {
+    .app-reports #header { padding: 16px; gap: 16px; }
+    .app-reports .breadcrumbs { padding: 12px 16px; }
+    .app-reports #content { padding: 20px 16px 32px; }
+    .app-reports #content h1 { font-size: 24px; }
+    .app-reports .titles-and-tools { gap: 16px; margin-bottom: 20px; }
+    .app-reports .object-tools { display: flex; }
+    .app-reports .reports-page-description { font-size: 13px; }
+    .app-reports .reports-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .app-reports .reports-selection-caption { gap: 4px; flex-direction: column; }
+    .app-reports .reports-editor-fields > fieldset { padding: 18px; }
+    .app-reports .reports-editor-fields .form-multiline, .app-reports .reports-payments .form-multiline { grid-template-columns: minmax(0, 1fr); }
+    .app-reports .reports-photo-grid { grid-template-columns: minmax(0, 1fr); }
+    .app-reports .reports-photos-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+    .app-reports #changelist .actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+    .app-reports #changelist .actions label { display: flex; flex: 1 1 200px; gap: 8px; align-items: center; }
+    .app-reports #changelist .actions select { width: auto; min-width: 0; flex: 1; }
+    .app-reports #toolbar #searchbar { width: min(260px, 55vw); }
+    .app-reports #changelist .results { max-width: 100%; overflow-x: auto; }
+    .app-reports #changelist .changelist-form-container:has(#changelist-filter) > div { max-width: 100%; }
+    .app-reports #changelist-filter { flex-basis: auto; border-left: 0; border-top: 1px solid var(--reports-border); }
+    .app-reports .submit-row { flex-direction: column; }
+    .app-reports .submit-row input { width: 100%; white-space: normal; }
+    .app-reports .submit-row a.deletelink { margin: 0; align-self: flex-start; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .app-reports .reports-photo-preview { transition: opacity 160ms ease-out; }
+}

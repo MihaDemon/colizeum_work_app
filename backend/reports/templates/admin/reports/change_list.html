@@ -1,0 +1,41 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block title %}{% if is_report %}Отчёты по сменам{% else %}Расходы клуба{% endif %} | Управление клубом{% endblock %}
+
+{% block responsive %}
+  {{ block.super }}
+  {% include "admin/reports/includes/styles.html" %}
+{% endblock %}
+
+{% block branding %}<div id="site-name"><a href="{% url 'admin:index' %}">Управление клубом</a></div>{% endblock %}
+
+{% block content_title %}<h1>{% if is_report %}Отчёты по сменам{% else %}Расходы клуба{% endif %}</h1>{% endblock %}
+{% block content_subtitle %}
+  <p class="reports-page-description">{% if is_report %}Поступления, администраторы и фотографии за каждую смену.{% else %}Учёт расходов и подтверждающие фотографии.{% endif %}</p>
+{% endblock %}
+
+{% block content %}
+  {% include "admin/reports/includes/navigation.html" %}
+  <section class="reports-selection" aria-label="Итоги текущей выборки">
+    <div class="reports-selection-caption"><h2>Текущая выборка</h2><span>Записей: {{ cl.result_count }} · Суммы в рублях</span></div>
+    <dl class="reports-totals">
+      {% for total in selection_totals %}
+        <div{% if total.primary %} class="reports-total-primary"{% endif %}><dt>{{ total.label }}</dt><dd>{{ total.value }}</dd></div>
+      {% endfor %}
+    </dl>
+  </section>
+  {{ block.super }}
+{% endblock %}
+
+{% block result_list %}
+  {% if cl.result_count %}
+    {{ block.super }}
+  {% else %}
+    <div class="reports-empty">
+      <h2>{% if cl.has_active_filters or cl.query %}Записи не найдены{% else %}{% if is_report %}Пока нет отчётов{% else %}Пока нет расходов{% endif %}{% endif %}</h2>
+      <p>{% if cl.has_active_filters or cl.query %}Измените запрос или сбросьте фильтры, чтобы увидеть другие записи.{% elif is_report %}Добавьте первый отчёт: укажите смену, поступления и хотя бы одну фотографию.{% else %}Добавьте первый расход. Фотографии можно приложить при необходимости.{% endif %}</p>
+      {% if cl.has_active_filters or cl.query %}<a href="{{ request.path }}">Сбросить поиск и фильтры</a>{% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
