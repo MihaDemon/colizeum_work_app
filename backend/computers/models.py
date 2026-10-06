@@ -1,24 +1,30 @@
 from django.db import models
 
-from computers.mixins import DeviceBaseModel
+from computers.mixins import DeviceBaseModelMixin
 from computers.constraints import (
     SN_MAX_LENGTH, COMPONENT_MAX_LENGTH
 )
 
 
-class Mouse(DeviceBaseModel):
+class Mouse(DeviceBaseModelMixin):
     class Meta:
         verbose_name = 'Мышка'
         verbose_name_plural = 'Мышки'
 
 
-class Keyboard(DeviceBaseModel):
+class Keyboard(DeviceBaseModelMixin):
     class Meta:
         verbose_name = 'Клавиатура'
         verbose_name_plural = 'Клавиатуры'
 
 
-class Monitor(DeviceBaseModel):
+class Headset(DeviceBaseModelMixin):
+    class Meta:
+        verbose_name = 'Наушники'
+        verbose_name_plural = 'Наушники'
+
+
+class Monitor(DeviceBaseModelMixin):
     class Meta:
         verbose_name = 'Монитор'
         verbose_name_plural = 'Мониторы'
@@ -56,6 +62,11 @@ class PC(models.Model):
         blank=True,
         null=True
     )
+    info = models.TextField(
+        verbose_name='Информация',
+        blank=True,
+        null=True
+    )
 
     class Meta:
         verbose_name = 'ПК'
@@ -80,6 +91,12 @@ class Station(models.Model):
     )
     keyboard = models.ForeignKey(
         'Keyboard',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True
+    )
+    headset = models.ForeignKey(
+        'Headset',
         on_delete=models.SET_NULL,
         blank=True,
         null=True

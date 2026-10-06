@@ -1,4 +1,9 @@
-from django.urls import path
+from rest_framework.routers import DefaultRouter
 
-urlpatterns = [
-]
+from api.views import AuthViewSet
+
+router = DefaultRouter()
+
+router.register(r'telegram', AuthViewSet, basename='telegram')
+
+urlpatterns = router.urls

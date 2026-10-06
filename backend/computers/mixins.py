@@ -5,7 +5,7 @@ from computers.constraints import (
 )
 
 
-class DeviceBaseModel(models.Model):
+class DeviceBaseModelMixin(models.Model):
     model = models.CharField(
         verbose_name='Модель',
         unique=True,
@@ -23,8 +23,14 @@ class DeviceBaseModel(models.Model):
         blank=True,
         null=True
     )
+    info = models.TextField(
+        verbose_name='Информация',
+        blank=True,
+        null=True
+    )
 
     class Meta:
+        abstract = True
         ordering = ('serial_number',)
 
     def __str__(self):
