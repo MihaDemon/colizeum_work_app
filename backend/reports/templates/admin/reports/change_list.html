@@ -17,6 +17,7 @@
 
 {% block content %}
   {% include "admin/reports/includes/navigation.html" %}
+  <div class="reports-register-balance"><span>Сейчас в кассе</span><strong>{{ cash_register_balance }} ₽</strong><span>Общий остаток по всем отчётам и расходам</span></div>
   <section class="reports-selection" aria-label="Итоги текущей выборки">
     <div class="reports-selection-caption"><h2>Текущая выборка</h2><span>Записей: {{ cl.result_count }} · Суммы в рублях</span></div>
     <dl class="reports-totals">

@@ -11,6 +11,9 @@ from users.constraints import (
 
 
 class AdminUser(models.Model):
+    role = models.CharField(max_length=7, choices=[('admin', 'Administrator'), ('manager', 'Manager')], default='admin')
+    telegram_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+
     phone_number = models.CharField(
         verbose_name='Номер телефона',
         unique=True,
@@ -55,15 +58,24 @@ class User(AbstractUser):
     )
     email = models.EmailField(
         verbose_name='Почта',
+        null=True, default=None,
         unique=True,
         blank=True
     )
     telegram_id = models.CharField(
         verbose_name='Телеграм ID',
+        null=True, default=None,
         unique=True,
         blank=True,
         max_length=MAX_TELEGRAM_ID_LENGTH
     )
+
+    def save(self, *args, **kwargs):
+        # UserManager normalizes omitted email to an empty string. Store absence
+        # as NULL so independent Telegram-only accounts do not collide.
+        self.email = self.email or None
+        self.telegram_id = self.telegram_id or None
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ('username',)

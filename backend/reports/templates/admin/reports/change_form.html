@@ -1,5 +1,5 @@
 {% extends "admin/change_form.html" %}
-{% load i18n admin_urls %}
+{% load i18n admin_urls l10n %}
 
 {% block title %}{% if errors %}{% translate "Error:" %} {% endif %}{{ reports_form_title }} | Управление клубом{% endblock %}
 
@@ -23,7 +23,7 @@
   </ol>
 {% endblock %}
 {% block content_subtitle %}
-  <p class="reports-page-description">{% if add %}{% if is_report %}Закройте смену: внесите суммы и приложите фотографии.{% else %}Укажите сумму и назначение расхода. Фотографии необязательны.{% endif %}{% else %}{{ original.date|date:"d E Y, H:i" }}{% if original.admin %} · {{ original.admin }}{% endif %}{% endif %}</p>
+  <p class="reports-page-description">{% if add %}{% if is_report %}Закройте смену: внесите суммы и приложите фотографии.{% else %}Укажите сумму и назначение расхода. Фотографии необязательны.{% endif %}{% else %}{% if is_report %}{{ original.date|date:"d E Y" }}{% else %}{{ original.date|date:"d E Y, H:i" }}{% endif %}{% if original.admin %} · {{ original.admin }}{% endif %}{% endif %}</p>
 {% endblock %}
 
 {% block form_top %}{% include "admin/reports/includes/navigation.html" %}{% endblock %}
@@ -40,10 +40,20 @@
           <div><dt>СБП</dt><dd data-money-field="spb">{{ original.spb|default:"0"|floatformat:"2g" }} ₽</dd></div>
           <div><dt>Наличные</dt><dd data-money-field="cash">{{ original.cash|default:"0"|floatformat:"2g" }} ₽</dd></div>
         </dl>
-        <p>Остаток в кассе и инкассация учитываются отдельно и не входят в поступления.</p>
+        <p>В кассу поступает вся сумма наличных за смену. Безнал и СБП не меняют остаток.</p>
       {% else %}
         <p>Опишите назначение расхода в комментарии, чтобы его было проще найти.</p>
       {% endif %}
+      <dl class="reports-breakdown reports-cash-summary" data-cash-summary
+          data-register-balance="{{ cash_register_balance_raw|unlocalize }}"
+          data-original-effect="{{ original_cash_effect|unlocalize }}">
+        <div><dt>Сейчас в кассе</dt><dd>{{ cash_register_balance }} ₽</dd></div>
+        <div><dt>Влияние записи на кассу</dt><dd data-cash-effect>{{ cash_effect|default:"0,00" }} ₽</dd></div>
+        <div><dt>После сохранения</dt><dd data-cash-projected aria-live="polite">—</dd></div>
+      </dl>
+      <p class="reports-cash-error" data-cash-error role="alert" hidden>Изменение нельзя сохранить: в кассе недостаточно наличных.</p>
+      {% if original %}<p class="reports-cash-hint">При изменении записи ранее учтённая сумма заменяется новой.</p>{% endif %}
+      <p class="reports-cash-hint">Предварительный расчёт. Другие записи могут изменить остаток до сохранения.</p>
       <div class="reports-photo-requirement">
         <strong>{% if is_report %}Минимум одна фотография{% else %}Фотографии по желанию{% endif %}</strong>
         <p>{% if is_report %}Приложите фото к отчёту перед сохранением.{% else %}Расход можно сохранить без фотографий.{% endif %}</p>

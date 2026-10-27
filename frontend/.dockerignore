@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.*
+playwright-report
+test-results
+.git
+
+tests
+playwright.config.ts
+vitest.config.ts
+*.md
+*.tsbuildinfo

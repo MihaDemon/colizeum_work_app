@@ -39,6 +39,33 @@
         output.textContent = formatMoney(total);
     }
 
+    function updateCash() {
+        const summary = document.querySelector('[data-cash-summary]');
+        if (!summary) return;
+        const cash = document.querySelector('#id_cash');
+        const amount = document.querySelector('#id_amount');
+        if (!cash && !amount) {
+            summary.querySelector('[data-cash-projected]').textContent = formatMoney(cents(summary.dataset.registerBalance));
+            return;
+        }
+        let effect;
+        if (cash) {
+            effect = cents(cash.value);
+        } else {
+            const expense = cents(amount.value);
+            effect = document.querySelector('#id_from_register').checked ? (expense === null ? null : -expense) : 0n;
+        }
+        summary.querySelector('[data-cash-effect]').textContent = formatMoney(effect);
+        const balance = cents(summary.dataset.registerBalance);
+        const original = cents(summary.dataset.originalEffect);
+        const projected = effect === null || balance === null || original === null ? null : balance - original + effect;
+        summary.querySelector('[data-cash-projected]').textContent = formatMoney(
+            projected,
+        );
+        const warning = document.querySelector('[data-cash-error]');
+        if (warning) warning.hidden = projected === null || projected >= 0n;
+    }
+
     function updatePhotos() {
         previewUrls.forEach((url, preview) => {
             if (!preview.isConnected) {
@@ -90,6 +117,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         updateMoney();
+        updateCash();
         const photoGrid = document.querySelector('.reports-photo-grid');
         if (photoGrid) {
             // Django creates the add link asynchronously after DOMContentLoaded.
@@ -98,6 +126,7 @@
         }
         document.addEventListener('input', (event) => {
             if (['id_cards', 'id_spb', 'id_cash', 'id_amount'].includes(event.target.id)) updateMoney();
+            if (['id_cash', 'id_amount', 'id_from_register'].includes(event.target.id)) updateCash();
         });
         document.addEventListener('change', (event) => {
             if (!event.target.closest('.reports-photos')) return;

@@ -1,10 +1,11 @@
 import json
+from collections.abc import Mapping
 from io import BytesIO
 from urllib.parse import parse_qsl
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -12,31 +13,34 @@ from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAdminUser, IsAuthenticated, SAFE_METHODS
+from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 
 from api.utils import validate_telegram_data
 from api.qr import get_device_detail_url
 from api.serializers import (
-    ExpensePhotoSerializer, ExpensesSerializer, HeadsetSerializer,
+    CashRegisterSerializer, ExpensePhotoSerializer, ExpensesSerializer, HeadsetSerializer,
     KeyboardSerializer, MonitorSerializer, MouseSerializer, PCSerializer,
     PlayStationSerializer, ReportPhotoSerializer, ReportSerializer,
-    StationSerializer,
+    StationSerializer, UserSerializer,
 )
 from computers.models import Headset, Keyboard, Monitor, Mouse, PC, PlayStation, Station
-from reports.models import ExpensePhoto, Expenses, Report, ReportPhoto
+from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
+from reports.exceptions import InsufficientCash
 from users.models import AdminUser
 
 User = get_user_model()
 
 
 class AuthViewSet(viewsets.ViewSet):
-    @action(detail=False, methods=['post'], url_path='telegram')
+    @action(detail=False, methods=['post'], url_path='telegram', permission_classes=[AllowAny])
     def telegram(self, request):
         """
         Handle Telegram authentication.
         """
+        if not isinstance(request.data, Mapping):
+            raise ValidationError({'error': 'Expected an object.'})
         init_data = request.data.get('initData')
         bot_token = settings.TELEGRAM_BOT_TOKEN
 
@@ -52,76 +56,49 @@ class AuthViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        parsed_data = dict(parse_qsl(init_data))
-        user_data = json.loads(parsed_data.get('user', '{}'))
-        telegram_id = str(user_data.get('id'))
-
-        if not telegram_id:
-            return Response(
-                {'error': 'Нет Telegram ID в данных'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = User.objects.filter(telegram_id=telegram_id).first()
-
-        if user:
-            user.last_login = timezone.now()
-
-            user.save(update_fields=['last_login'])
-
-            token, _ = Token.objects.get_or_create(user=user)
-
-            return Response(
-                {'token': token.key, 'is_new_user': False},
-                status=status.HTTP_200_OK
-            )
-
-        phone_number = request.data.get('phone_number')
-        username = request.data.get('username')
-
-        if not phone_number or not username:
-            return Response(
-                {'require_registration': 'True'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
         try:
-            admin_user = AdminUser.objects.get(phone_number=phone_number)
+            user_data = json.loads(dict(parse_qsl(init_data)).get('user', '{}'))
+            ident = user_data.get('id')
+            if isinstance(ident, bool) or not isinstance(ident, int) or ident <= 0:
+                raise ValueError
+            telegram_id = str(ident)
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationError({'error': 'Нет Telegram ID в данных'})
+        user = User.objects.filter(telegram_id=telegram_id).first()
+        if user:
+            if not user.is_active:
+                raise PermissionDenied('This account is disabled.')
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login'])
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({'token': token.key, 'is_new_user': False})
+        phone, username = request.data.get('phone_number'), request.data.get('username')
+        if not phone or not username:
+            return Response({'require_registration': True}, status=404)
+        from rest_framework import serializers
+        class RegistrationSerializer(serializers.ModelSerializer):
+            class Meta:
+                model = User
+                fields = ['username']
+        registration = RegistrationSerializer(data={'username': username})
+        registration.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                contact = AdminUser.objects.select_for_update().filter(pk=phone).first()
+                if not contact or contact.telegram_id != telegram_id:
+                    raise PermissionDenied('First share your own phone number with the bot. Your manager must add it to the staff list.')
+                if User.objects.filter(phone_number=contact).exists():
+                    raise ValidationError({'phone_number': 'This phone is already registered.'})
+                user = User.objects.create_user(username=registration.validated_data['username'], phone_number=contact,
+                    telegram_id=telegram_id, is_staff=contact.role == 'manager', last_login=timezone.now())
+                token = Token.objects.create(user=user)
+        except IntegrityError:
+            raise ValidationError({'error': 'This account is already registered. Sign in again.'})
+        return Response({'token': token.key, 'is_new_user': True}, status=201)
 
-        except AdminUser.DoesNotExist:
-            return Response(
-                {'error': 'Данного телефона нет в базе администраторов'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        if User.objects.filter(phone_number=admin_user).exists():
-            return Response(
-                {'error': 'Этот номер телефона уже зарегистрирован'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if User.objects.filter(username=username).exists():
-            return Response(
-                {'error': 'Этот логин уже занят'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = User.objects.create(
-            username=username,
-            phone_number=admin_user,
-            telegram_id=telegram_id,
-            last_login=timezone.now()
-        )
-
-        user.set_unusable_password()
-        user.save()
-
-        token, _ = Token.objects.get_or_create(user=user)
-
-        return Response(
-            {'token': token.key, 'is_new_user': True},
-            status=status.HTTP_201_CREATED
-        )
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        return Response(UserSerializer(request.user).data)
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -211,8 +188,39 @@ class StationViewSet(DeviceViewSet):
 class FinancialRecordViewSet(viewsets.ModelViewSet):
     permission_classes = (IsAuthenticated,)
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if not self.request.user.is_staff and not self.request.user.is_superuser:
+            queryset = queryset.filter(admin=self.request.user)
+        return queryset
+
     def perform_create(self, serializer):
+        # Mini App clients must use the shift workflow to prevent bypassing shift ownership.
+        if not settings.ENABLE_LEGACY_FINANCIAL_WRITES:
+            raise PermissionDenied('Use the shift or expense workflow.')
         serializer.save(admin=self.request.user)
+
+    def check_mutable(self, instance):
+        if not settings.ENABLE_LEGACY_FINANCIAL_WRITES:
+            raise PermissionDenied('Use the shift workflow. Financial corrections require Django administration.')
+        from workflows.models import Shift, ShiftExpense
+        linked = Shift.objects.filter(report_id=instance.pk).exists() if isinstance(instance, Report) else ShiftExpense.objects.filter(expense_id=instance.pk).exists()
+        if linked:
+            raise PermissionDenied('Workflow records are immutable. Use the Django administration for audited corrections.')
+
+    def perform_update(self, serializer):
+        self.check_mutable(serializer.instance)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self.check_mutable(instance)
+        with transaction.atomic(using=instance._state.db):
+            instance.delete()
+
+    def handle_exception(self, exc):
+        if isinstance(exc, InsufficientCash):
+            exc = ValidationError({'non_field_errors': exc.messages})
+        return super().handle_exception(exc)
 
 
 class ReportViewSet(FinancialRecordViewSet):
@@ -225,20 +233,59 @@ class ExpensesViewSet(FinancialRecordViewSet):
     serializer_class = ExpensesSerializer
 
 
-class ReportPhotoViewSet(viewsets.ModelViewSet):
+class CashRegisterViewSet(viewsets.GenericViewSet):
+    """The register is a singleton; its balance is maintained by record saves."""
+    permission_classes = (IsAuthenticated,)
+    serializer_class = CashRegisterSerializer
+
+    def list(self, request):
+        register = CashRegister.objects.filter(pk=1).first() or CashRegister()
+        return Response(self.get_serializer(register).data)
+
+
+class FinancialPhotoViewSet(viewsets.ModelViewSet):
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if not self.request.user.is_staff and not self.request.user.is_superuser:
+            queryset = queryset.filter(**{f'{self.parent_field}__admin': self.request.user})
+        return queryset
+
+    def check_parent(self, parent):
+        if parent.admin_id != self.request.user.pk and not (self.request.user.is_staff or self.request.user.is_superuser):
+            raise PermissionDenied('This record belongs to another employee.')
+        FinancialRecordViewSet.check_mutable(self, parent)
+
+    def perform_create(self, serializer):
+        self.check_parent(serializer.validated_data[self.parent_field])
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self.check_parent(getattr(serializer.instance, self.parent_field))
+        self.check_parent(serializer.validated_data.get(self.parent_field, getattr(serializer.instance, self.parent_field)))
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self.check_parent(getattr(instance, self.parent_field))
+        instance.delete()
+
+
+class ReportPhotoViewSet(FinancialPhotoViewSet):
+    parent_field = 'report'
     queryset = ReportPhoto.objects.select_related('report').order_by('pk')
     serializer_class = ReportPhotoSerializer
     permission_classes = (IsAuthenticated,)
 
     def perform_destroy(self, instance):
         with transaction.atomic():
+            self.check_parent(instance.report)
             report = Report.objects.select_for_update().get(pk=instance.report_id)
             if report.photos.count() <= 1:
                 raise ValidationError({'image': 'Нельзя удалить последнюю фотографию отчёта.'})
             instance.delete()
 
 
-class ExpensePhotoViewSet(viewsets.ModelViewSet):
+class ExpensePhotoViewSet(FinancialPhotoViewSet):
+    parent_field = 'expense'
     queryset = ExpensePhoto.objects.select_related('expense').order_by('pk')
     serializer_class = ExpensePhotoSerializer
     permission_classes = (IsAuthenticated,)

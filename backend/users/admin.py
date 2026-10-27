@@ -70,6 +70,6 @@ class AdminUserAdmin(admin.ModelAdmin):
     list_display = (
         'phone_number',
         'first_name',
-        'last_name'
+        'last_name', 'role', 'telegram_id'
     )
     search_fields = ('phone_number', 'first_name', 'last_name')
