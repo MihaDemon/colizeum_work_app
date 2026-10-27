@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   IconArrowLeft,
+  IconCalendarMonth,
   IconChevronRight,
   IconRefresh,
 } from "@tabler/icons-react";
 import { request } from "../lib/api";
-import { money, time } from "../lib/format";
+import { cleanerDateTime, money, time } from "../lib/format";
 import type { Expense, Shift } from "../lib/workspace";
 import { PrivateImage } from "./PrivateImage";
 
@@ -140,10 +141,7 @@ export function NotificationDetails({
                 </div>
               )}
               {shift.cleanerVisitedAt && (
-                <p>
-                  Уборщица пришла {date(shift.cleanerVisitedAt)} в{" "}
-                  {time(shift.cleanerVisitedAt)}
-                </p>
+                <p>Уборщица пришла {cleanerDateTime(shift.cleanerVisitedAt)}</p>
               )}
               {Object.entries(shift.photos || {}).map(([label, src]) => (
                 <figure key={label}>
@@ -204,21 +202,13 @@ export function CleanerHistory({
       : currentMonth(),
   );
   const [year, number] = month.split("-");
-  const [yearDraft, setYearDraft] = useState(String(Number(year)));
-  const months = [
-    "Январь",
-    "Февраль",
-    "Март",
-    "Апрель",
-    "Май",
-    "Июнь",
-    "Июль",
-    "Август",
-    "Сентябрь",
-    "Октябрь",
-    "Ноябрь",
-    "Декабрь",
-  ];
+  const periodLabel = new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Moscow",
+  })
+    .format(new Date(`${year}-${number}-15T12:00:00+03:00`))
+    .replace(/ г\.$/, "");
   const changePeriod = (value: string) => {
     setMonth(value);
     onMonthChange(value);
@@ -235,41 +225,31 @@ export function CleanerHistory({
       <div className="cp-page-heading">
         <h1>Уборщица</h1>
       </div>
-      <div className="cp-money-grid cp-two-columns">
-        <label className="cp-field">
-          Месяц
-          <select
-            aria-label="Месяц"
-            value={number}
-            onChange={(event) => changePeriod(`${year}-${event.target.value}`)}
-          >
-            {months.map((name, index) => (
-              <option value={String(index + 1).padStart(2, "0")} key={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="cp-field">
-          Год
+      <label className="cp-field">
+        Месяц и год
+        <span className="cp-month-picker">
+          <span className="cp-month-value" aria-hidden="true">
+            {periodLabel}
+            <IconCalendarMonth size={20} />
+          </span>
           <input
-            type="number"
-            inputMode="numeric"
-            aria-label="Год"
-            min="1"
-            max="9999"
-            value={yearDraft}
+            type="month"
+            aria-label="Месяц и год"
+            value={month}
             required
-            onChange={(event) => {
-              const value = event.target.value;
-              setYearDraft(value);
-              if (/^\d{1,4}$/.test(value) && Number(value) >= 1)
-                changePeriod(`${value.padStart(4, "0")}-${number}`);
+            onClick={(event) => {
+              try {
+                event.currentTarget.showPicker?.();
+              } catch {
+                /* Use the native field if this WebView restricts showPicker. */
+              }
             }}
-            onBlur={() => setYearDraft(String(Number(year)))}
+            onChange={(event) => {
+              if (event.target.value) changePeriod(event.target.value);
+            }}
           />
-        </label>
-      </div>
+        </span>
+      </label>
       {!data ? (
         <FetchState error={error} retry={retry} />
       ) : data.results.length ? (
@@ -277,8 +257,7 @@ export function CleanerHistory({
           {data.results.map((visit) => (
             <div className="cp-cleaner-record" key={visit.id}>
               <strong>
-                Уборщица пришла {date(visit.occurredAt).replaceAll(".", "/")} в{" "}
-                {time(visit.occurredAt).replace(":", "/")}
+                Уборщица пришла {cleanerDateTime(visit.occurredAt)}
               </strong>
               <p>Отметил(а): {visit.adminName}</p>
               <button

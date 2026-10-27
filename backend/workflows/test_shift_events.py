@@ -84,7 +84,7 @@ class ShiftEventTests(APITestCase):
         self.assertEqual(self.client.post(path, {'confirmed': True}).status_code, 409)
         self.assertEqual(CleanerVisit.objects.count(), 1)
         self.assert_recipients('cleaner')
-        self.assertEqual(TelegramNotification.objects.filter(kind='cleaner').first().message, 'Уборщица пришла 01/11/2026 в 00/05')
+        self.assertEqual(TelegramNotification.objects.filter(kind='cleaner').first().message, 'Уборщица пришла 01/11/26 00:05')
         self.assertEqual(self.client.get('/api/workspace/').data['state']['shift']['cleanerVisitedAt'], response.data['occurredAt'])
         self.close(pk)
         self.assertEqual(self.client.post(path, {'confirmed': True}).status_code, 409)

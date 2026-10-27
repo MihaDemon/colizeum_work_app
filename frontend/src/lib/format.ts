@@ -16,3 +16,15 @@ export const dateLabel = (date: string) =>
     month: "short",
     timeZone: "Europe/Moscow",
   }).format(new Date(date));
+
+export const cleanerDateTime = (value: string) => {
+  const date = new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    timeZone: "Europe/Moscow",
+  })
+    .format(new Date(value))
+    .replaceAll(".", "/");
+  return `${date} ${time(value)}`;
+};
