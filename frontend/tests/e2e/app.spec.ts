@@ -264,9 +264,9 @@ test("new staff confirm their phone in the Mini App and register a username", as
   await page.screenshot({ path: info.outputPath("registration.png"), fullPage: true });
   await page.getByLabel("Логин", { exact: true }).fill("new_staff");
   await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
-  const phone = page.getByLabel("Номер телефона", { exact: true });
-  await expect(phone).toHaveValue("9991234567");
-  await expect(phone).toHaveAttribute("readonly", "");
+  await expect(page.getByRole("status")).toContainText("Телефон подтверждён через Telegram.");
+  await expect(page.getByLabel("Номер телефона", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("9991234567", { exact: false })).toHaveCount(0);
   const sent = page.waitForRequest((r) => r.url().endsWith("/telegram/telegram/") && Boolean(r.postDataJSON().username));
   await page.getByRole("button", { name: "Начать работу" }).click();
   expect((await sent).postDataJSON()).toEqual({ initData: "signed-telegram-test-data", username: "new_staff", phone_number: "9991234567" });

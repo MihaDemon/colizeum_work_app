@@ -109,22 +109,7 @@ export function Auth({
                 placeholder="Ваш рабочий логин"
               />
             </label>
-            {phone ? (
-              <label>
-                Номер телефона
-                <div className="phone-input">
-                  <span>+7</span>
-                  <input
-                    name="phone_number"
-                    aria-label="Номер телефона"
-                    type="tel"
-                    autoComplete="tel-national"
-                    readOnly
-                    value={phone}
-                  />
-                </div>
-              </label>
-            ) : (
+            {!phone && (
               <button
                 className="secondary-button wide"
                 type="button"
