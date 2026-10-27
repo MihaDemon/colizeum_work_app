@@ -1,5 +1,4 @@
 import hmac
-import re
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -15,6 +14,8 @@ from rest_framework.response import Response
 from reports.exceptions import InsufficientCash
 from reports.models import ExpensePhoto, ReportPhoto
 from users.models import AdminUser
+from users.phones import matching_staff_numbers
+from api.serializers import StaffPhoneField
 from . import services
 from .commands import idempotent_command
 from .models import Shift, Task, TaskSubmission
@@ -146,7 +147,7 @@ def private_file(request, kind, pk):
 
 class ContactSerializer(serializers.Serializer):
     telegram_id = serializers.RegexField(r'^[1-9][0-9]{0,19}$')
-    phone_number = serializers.CharField(max_length=30)
+    phone_number = StaffPhoneField(max_length=32)
 
 
 @api_view(['POST'])
@@ -158,16 +159,14 @@ def bind_contact(request):
     if not settings.BOT_SERVICE_TOKEN or not hmac.compare_digest(supplied, settings.BOT_SERVICE_TOKEN):
         raise PermissionDenied('Invalid bot credentials.')
     data = validated(ContactSerializer, request)
-    phone = re.sub(r'\D', '', data['phone_number'])
-    if len(phone) == 11 and phone[0] in '78':
-        phone = phone[1:]
-    if len(phone) != 10:
-        raise ValidationError({'phone_number': 'Use a Russian phone number.'})
     with transaction.atomic():
-        contact = get_object_or_404(AdminUser.objects.select_for_update(), pk=phone)
+        matches = matching_staff_numbers(data['phone_number'])
+        if len(matches) > 1:
+            raise ValidationError({'phone_number': 'Номер повторяется в списке сотрудников. Обратитесь к суперпользователю.'})
+        contact = get_object_or_404(AdminUser.objects.select_for_update(), pk__in=matches)
         if contact.telegram_id and contact.telegram_id != data['telegram_id']:
             raise PermissionDenied('This phone is already linked to another Telegram account.')
-        other = AdminUser.objects.filter(telegram_id=data['telegram_id']).exclude(pk=phone).exists()
+        other = AdminUser.objects.filter(telegram_id=data['telegram_id']).exclude(pk=contact.pk).exists()
         linked = get_user_model().objects.select_for_update().filter(phone_number=contact).first()
         foreign_user = get_user_model().objects.filter(telegram_id=data['telegram_id']).exclude(phone_number=contact).exists()
         if other or foreign_user or (linked and linked.telegram_id and linked.telegram_id != data['telegram_id']):

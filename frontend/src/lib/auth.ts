@@ -27,5 +27,5 @@ export async function verifyTelegramContact(
     if (attempt < 11)
       await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error("Номер пока не подтверждён. Убедитесь, что управляющий добавил вас в список сотрудников, и повторите попытку.");
+  throw new Error("Номер пока не подтверждён. Убедитесь, что суперпользователь добавил вас в список сотрудников, и повторите попытку.");
 }

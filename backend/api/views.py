@@ -5,6 +5,7 @@ from urllib.parse import parse_qsl
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -22,12 +23,13 @@ from api.serializers import (
     CashRegisterSerializer, ExpensePhotoSerializer, ExpensesSerializer, HeadsetSerializer,
     KeyboardSerializer, MonitorSerializer, MouseSerializer, PCSerializer,
     PlayStationSerializer, ReportPhotoSerializer, ReportSerializer,
-    StationSerializer, UserSerializer,
+    StationSerializer, UserSerializer, StaffPhoneField,
 )
 from computers.models import Headset, Keyboard, Monitor, Mouse, PC, PlayStation, Station
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
 from reports.exceptions import InsufficientCash
 from users.models import AdminUser
+from users.phones import normalize_staff_phone
 
 User = get_user_model()
 
@@ -59,7 +61,11 @@ class AuthViewSet(viewsets.ViewSet):
     def contact_status(self, request):
         ident = self.telegram_id(request)
         contact = AdminUser.objects.filter(telegram_id=ident).first()
-        response = Response({'verified': True, 'phone_number': contact.pk} if contact else {'verified': False})
+        try:
+            phone = normalize_staff_phone(contact.pk) if contact else None
+        except DjangoValidationError:
+            phone = None
+        response = Response({'verified': True, 'phone_number': phone} if phone else {'verified': False})
         response['Cache-Control'] = 'no-store'
         return response
 
@@ -79,23 +85,28 @@ class AuthViewSet(viewsets.ViewSet):
             return Response({'require_registration': True}, status=404)
         from rest_framework import serializers
         class RegistrationSerializer(serializers.ModelSerializer):
+            phone_number = StaffPhoneField(max_length=32)
+
             class Meta:
                 model = User
-                fields = ['username']
-        registration = RegistrationSerializer(data={'username': username})
+                fields = ['username', 'phone_number']
+        registration = RegistrationSerializer(data={'username': username, 'phone_number': phone})
         registration.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
-                contact = AdminUser.objects.select_for_update().filter(pk=phone).first()
-                if not contact or contact.telegram_id != telegram_id:
-                    raise PermissionDenied('Подтвердите свой номер через Telegram в приложении. Управляющий должен добавить вас в список сотрудников.')
+                contact = AdminUser.objects.select_for_update().filter(telegram_id=telegram_id).first()
+                if not contact or normalize_staff_phone(contact.pk) != registration.validated_data['phone_number']:
+                    raise PermissionDenied('Подтвердите свой номер через Telegram в приложении. Суперпользователь должен добавить вас в список сотрудников.')
                 if User.objects.filter(phone_number=contact).exists():
                     raise ValidationError({'phone_number': 'This phone is already registered.'})
                 user = User.objects.create_user(username=registration.validated_data['username'], phone_number=contact,
+                    first_name=contact.first_name, last_name=contact.last_name,
                     telegram_id=telegram_id, is_staff=contact.role == 'manager', last_login=timezone.now())
                 token = Token.objects.create(user=user)
         except IntegrityError:
             raise ValidationError({'error': 'This account is already registered. Sign in again.'})
+        except DjangoValidationError:
+            raise ValidationError({'phone_number': 'Проверьте номер в записи сотрудника у суперпользователя.'})
         return Response({'token': token.key, 'is_new_user': True}, status=201)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
