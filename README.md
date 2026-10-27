@@ -46,9 +46,11 @@ Set `OWNER_USERNAME`, a strong `OWNER_PASSWORD`, and optionally `OWNER_TELEGRAM_
 docker compose exec backend python manage.py createsuperuser
 ```
 
-Open `/admin/` to manage staff. Add each person's Russian phone number as **10 digits without +7**, their name, and initial role (`admin` or `manager`) to the staff list. The person sends `/start` to the bot and opens the Mini App. Existing accounts sign in automatically. New staff enter a username and tap **Подтвердить телефон Telegram** inside the app. Telegram asks permission to share their own contact; the bot records it with Django and removes the contact card from the chat. The app retrieves the confirmed number and enables registration. There is no contact keyboard in the bot and no manual phone entry. Telegram 6.9 or newer is required for this registration popup.
+The superuser opens `/admin/` → **Администраторы** and creates an `AdminUser` with the person's first name, surname, phone number, and role: **Администратор** (`admin`) or **Управляющий** (`manager`). Phone numbers may be entered as 10 digits, with `+7`, or with `8`; new records store 10 digits. No Telegram ID, username, or password is needed at this step, and no `User` account is created yet.
 
-For existing users, Django flags determine the role: `is_superuser` → superuser; otherwise `is_staff` → manager; otherwise administrator. Changing a staff-list initial role does not alter an existing user's permissions. Set `is_active=False` to revoke access. A superuser using the Mini App needs their numeric Telegram ID linked to the Django user.
+The person sends `/start` to the bot, opens the Mini App, and shares their own contact using **Подтвердить телефон Telegram**. The verified phone must match the staff record. The person chooses a username and completes registration, which creates a normal `User` linked to that `AdminUser`, copying the name, surname, and selected role. Administrator accounts have `is_staff=False`; manager accounts have `is_staff=True`. Neither gets superuser permissions. There is no bot contact keyboard, manual phone entry, or password step. Telegram 6.9 or newer is required for the contact popup. Existing accounts sign in automatically.
+
+The Telegram ID on `AdminUser` is filled automatically and is read-only in Django administration. Changing an existing staff record's role updates its linked account's administrator/manager permissions; changing names updates the linked account's names. The phone key is read-only after creation to preserve account links. Set `User.is_active=False` to revoke access. A superuser using the Mini App needs their numeric Telegram ID linked to their Django `User`.
 
 ## Shift, task, and cash behavior
 

@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 
@@ -8,8 +9,18 @@ from computers.models import (
     Mouse, Keyboard, Monitor, Headset, PC, Station, PlayStation
 )
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
+from users.phones import normalize_staff_phone
 
 User = get_user_model()
+
+
+class StaffPhoneField(serializers.CharField):
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        try:
+            return normalize_staff_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages)
 
 
 class UserSerializer(serializers.ModelSerializer):
