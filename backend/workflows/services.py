@@ -15,9 +15,12 @@ class Conflict(APIException):
     default_detail = 'Данные изменились. Обновите экран и повторите попытку.'
 
 
-def lock_register():
+def lock_register(user=None):
     CashRegister.get_default()
-    return CashRegister.objects.select_for_update().get(pk=1)
+    register = CashRegister.objects.select_for_update().get(pk=1)
+    if user is not None and not get_user_model().objects.filter(pk=user.pk, is_active=True).exists():
+        raise PermissionDenied('Учётная запись удалена или отключена.')
+    return register
 
 
 def own_shift(user):
@@ -35,7 +38,7 @@ def event(user, title, description='', kind='shift', task=None):
 
 @transaction.atomic
 def open_shift(user, data):
-    lock_register()
+    lock_register(user)
     if role(user) != 'admin':
         raise PermissionDenied('Открывать смены могут только администраторы.')
     if Shift.objects.filter(closed_at__isnull=True).exists():
@@ -48,7 +51,7 @@ def open_shift(user, data):
 
 @transaction.atomic
 def close_shift(user, pk, data):
-    lock_register()
+    lock_register(user)
     shift = own_shift(user)
     if str(shift.pk) != str(pk):
         raise Conflict('Эта смена больше не является вашей текущей сменой.')
@@ -75,7 +78,7 @@ def close_shift(user, pk, data):
 
 @transaction.atomic
 def add_expense(user, data):
-    lock_register()
+    lock_register(user)
     shift = own_shift(user)
     expense = Expenses.objects.create(admin=user, amount=data['amount'], info=data['description'], from_register=True)
     ShiftExpense.objects.create(shift=shift, expense=expense)
@@ -87,8 +90,10 @@ def add_expense(user, data):
 
 @transaction.atomic
 def create_task(user, data):
-    lock_register()
-    assignee = get_user_model().objects.select_for_update().get(pk=data['assignee'].pk)
+    lock_register(user)
+    assignee = get_user_model().objects.select_for_update().filter(pk=data['assignee'].pk).first()
+    if assignee is None:
+        raise Conflict('Сотрудник удалён. Выберите другого исполнителя.')
     data['assignee'] = assignee
     actor_role, target_role = role(user), role(assignee)
     if not assignee.is_active or user == assignee or actor_role == 'admin' or target_role == 'superuser':
@@ -105,7 +110,7 @@ def create_task(user, data):
 @transaction.atomic
 def submit_task(user, pk, data):
     # Shared lock order (register, then task) avoids a close/create/submit deadlock.
-    lock_register()
+    lock_register(user)
     task = Task.objects.select_for_update().get(pk=pk)
     if role(user) == 'superuser' or task.assignee_id != user.pk:
         raise PermissionDenied('Выполнить задачу может только назначенный сотрудник.')
@@ -146,7 +151,8 @@ def submit_task(user, pk, data):
     task.submitted_at = timezone.now()
     task.rejection_reason = ''
     task.save(update_fields=['submission_version', 'status', 'submitted_at', 'rejection_reason'])
-    TelegramNotification.objects.create(submission=submission, recipient=task.creator, next_attempt_at=timezone.now())
+    if task.creator_id:
+        TelegramNotification.objects.create(submission=submission, recipient=task.creator, next_attempt_at=timezone.now())
     event(user, 'Задача на проверке', task.title, kind='task', task=task)
     return task
 
@@ -155,7 +161,7 @@ def submit_task(user, pk, data):
 def save_photo_settings(user, data):
     if role(user) not in ['manager', 'superuser']:
         raise PermissionDenied('Настраивать фотографии отчёта могут только управляющие и суперпользователи.')
-    lock_register()
+    lock_register(user)
     settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     if data['version'] != settings.version:
         raise Conflict('Настройки фотографий изменились. Откройте настройки заново и повторите попытку.')
@@ -168,6 +174,7 @@ def save_photo_settings(user, data):
 
 @transaction.atomic
 def review_task(user, pk, data):
+    lock_register(user)
     task = Task.objects.select_for_update().get(pk=pk)
     if task.assignee_id == user.pk or not (user.is_superuser or (user.is_staff and task.creator_id == user.pk)):
         raise PermissionDenied('Проверить задачу может только её постановщик или суперпользователь.')

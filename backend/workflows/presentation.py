@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from reports.models import CashRegister, Expenses, Report
+from users.history import archived_people, participant_id
 from .models import Activity, PhotoSettings, Shift, Task
 from .permissions import person, visible_tasks
 
@@ -22,7 +23,7 @@ def task_data(task):
         photos.extend({'id': str(photo.pk), 'slot': photo.slot, 'label': photo.label, 'url': file_url('submission-photo', photo.pk)} for photo in submission.photos.all())
     return {
         'id': str(task.pk), 'title': task.title, 'description': task.description,
-        'managerId': str(task.creator_id), 'adminId': str(task.assignee_id),
+        'managerId': participant_id(task, 'creator'), 'adminId': participant_id(task, 'assignee'),
         'shiftId': str(task.shift_id) if task.shift_id else None,
         'priority': task.priority, 'requiresPhoto': task.requires_photo,
         'photoMode': 'single' if task.requires_photo and task.photo_mode == 'optional' else task.photo_mode,
@@ -38,7 +39,7 @@ def task_data(task):
 def shift_data(shift):
     report = shift.report
     return {
-        'id': str(shift.pk), 'adminId': str(shift.admin_id), 'type': shift.shift_type,
+        'id': str(shift.pk), 'adminId': participant_id(shift, 'admin'), 'type': shift.shift_type,
         'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
         'photoRequirements': shift.photo_requirements,
         **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
@@ -74,31 +75,37 @@ def workspace_data(user):
         legacy_reports = legacy_reports.filter(admin=user)
     legacy_reports = list(legacy_reports)
     people_ids.update(r.admin_id for r in legacy_reports if r.admin_id)
+    activity_list = list(activity[:200])
+    people_ids.update(a.actor_id for a in activity_list if a.actor_id)
     people = get_user_model().objects.select_related('phone_number').filter(Q(pk__in=people_ids) | (Q(is_active=True) if user.is_superuser else Q(pk=user.pk)))
     legacy = [{
-        'id': f'legacy-{r.pk}', 'adminId': str(r.admin_id) if r.admin_id else '', 'type': r.shift,
+        'id': f'legacy-{r.pk}', 'adminId': participant_id(r, 'admin'), 'type': r.shift,
         # A date anchor is only used to format the date; the UI does not invent shift times.
         'openedAt': f'{r.date.isoformat()}T12:00:00+03:00', 'legacy': True,
         'cash': float(r.cash), 'cards': float(r.cards), 'sbp': float(r.spb),
         'total': str(r.cash + r.cards + r.spb),
         'photos': {p.label or f'Фото {p.pk}': file_url('report', p.pk) for p in r.photos.all()},
     } for r in legacy_reports]
+    archives = archived_people(
+        ([current] if current else []) + task_list + history_list + expense_list + legacy_reports
+        + activity_list + [a.task for a in activity_list if a.task_id]
+    )
     balance = CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0
     return {
-        'user': person(user), 'people': [person(p) for p in people],
+        'user': person(user), 'people': [person(p) for p in people] + archives,
         'state': {
             'photoSettings': {'reportFields': photo_settings.report_fields, 'version': photo_settings.version},
             'shift': shift_data(current) if current else None,
             'shifts': sorted([shift_data(s) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],
             'expenses': [{
-                'id': str(e.pk), 'adminId': str(e.admin_id) if e.admin_id else '',
+                'id': str(e.pk), 'adminId': participant_id(e, 'admin'),
                 'shiftId': str(e.work_shift_expense.shift_id) if hasattr(e, 'work_shift_expense') else None,
                 'amount': float(e.amount), 'description': e.info, 'createdAt': iso(e.date),
                 'photo': file_url('expense', e.photos.all()[0].pk) if e.photos.all() else None,
             } for e in expense_list],
             'balance': float(balance),
             'activity': [{'id': str(a.pk), 'title': a.title, 'description': a.description, 'time': iso(a.created_at),
-                          'kind': a.kind, 'actorId': str(a.actor_id),
-                          'managerId': str(a.task.creator_id) if a.task_id else None, 'recipientId': str(a.task.assignee_id) if a.task_id else None} for a in activity[:200]],
+                          'kind': a.kind, 'actorId': participant_id(a, 'actor'),
+                          'managerId': participant_id(a.task, 'creator') if a.task_id else None, 'recipientId': participant_id(a.task, 'assignee') if a.task_id else None} for a in activity_list],
         },
     }

@@ -54,6 +54,10 @@ The person sends `/start` to the bot, opens the Mini App, and shares their own c
 
 The Telegram ID on `AdminUser` is filled automatically and is read-only in Django administration. Changing an existing staff record's role updates its linked account's administrator/manager permissions; changing names updates the linked account's names. The phone key is read-only after creation to preserve account links. Set `User.is_active=False` to revoke access. A superuser using the Mini App needs their numeric Telegram ID linked to their Django `User`.
 
+Superusers have view, add, change, and delete permissions throughout Django administration, including workflow records and the cash register. Model validation still applies (one open shift, nonnegative cash, and protected links between historical records). Managers retain their Mini App role restrictions.
+
+To remove an employee, delete their record under **Пользователи** or **Администраторы**; single and bulk deletion are supported. Deleting a User through Django administration also removes their linked staff card, preventing registration again until a superuser adds a new card. Tokens are revoked, while shifts, tasks, submissions, report photos, expenses, and the cash balance are preserved. Historical names are marked **(удалён)**. If the employee had an open shift, assign it to another administrator under **Смены** before continuing. Tasks whose creator was deleted can still be completed and reviewed by a superuser.
+
 ## Shift, task, and cash behavior
 
 - Only one shift can be open. Its administrator chooses day/night at opening, and that stored type is used at closing.

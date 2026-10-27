@@ -27,6 +27,7 @@ export interface StaffMember {
   name: string;
   initials: string;
   role: Role;
+  deleted?: boolean;
 }
 
 export interface Task {

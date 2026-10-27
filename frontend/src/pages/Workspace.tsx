@@ -1047,9 +1047,9 @@ function TaskDetails({
                 <strong>На проверке</strong>
                 <p>
                   {user.role === "admin"
-                    ? `Задачу проверит ${person(task.managerId).name}. Она останется здесь до принятия.`
+                    ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}. Она останется здесь до принятия.`
                     : user.id === task.adminId
-                      ? `Задачу проверит ${person(task.managerId).name}.`
+                      ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}.`
                       : "Проверьте фотографии и комментарий, затем примите задачу или верните её на доработку."}
                 </p>
               </div>
@@ -1089,7 +1089,9 @@ function TaskDetails({
                     photos,
                     note,
                   },
-                  `Задача отправлена на проверку: ${person(task.managerId).name}.`,
+                  person(task.managerId).deleted
+                    ? "Задача отправлена на проверку суперпользователю."
+                    : `Задача отправлена на проверку: ${person(task.managerId).name}.`,
                 );
               }}
             >
@@ -1259,10 +1261,12 @@ function WorkflowForm({
   const [photo, setPhoto] = useState("");
   const reportPhotoFields =
     state.shift?.photoRequirements || defaultReportPhotoFields;
-  const assignees = people.filter((person) =>
-    user.role === "superuser"
-      ? person.role === "admin" || person.role === "manager"
-      : person.role === "admin" && person.id === state.shift?.adminId,
+  const assignees = people.filter(
+    (person) =>
+      !person.deleted &&
+      (user.role === "superuser"
+        ? person.role === "admin" || person.role === "manager"
+        : person.role === "admin" && person.id === state.shift?.adminId),
   );
   const [adminId, setAdminId] = useState(assignees[0]?.id || "");
   const headings = {

@@ -6,11 +6,12 @@ from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator
 
 from reports.exceptions import InsufficientCash
+from users.history import UserHistory
 
 User = get_user_model()
 
 
-class Report(models.Model):
+class Report(UserHistory):
     class Shift(models.TextChoices):
         DAY = 'day', 'День'
         NIGHT = 'night', 'Ночь'
@@ -90,7 +91,7 @@ class Report(models.Model):
             register.apply_change(saved.cash - (previous.cash if previous else 0), using=using)
 
 
-class Expenses(models.Model):
+class Expenses(UserHistory):
     date = models.DateTimeField(
         verbose_name='Дата',
         auto_now_add=True,
