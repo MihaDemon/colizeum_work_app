@@ -32,6 +32,8 @@ urlpatterns = [
     path('workspace/', work.workspace),
     path('photo-settings/', work.photo_settings),
     path('shift-expenses/', work.expense),
+    path('shift-expenses/<int:pk>/', work.expense_details),
+    path('cleaner-visits/', work.cleaner_history),
     path('health/', work.health),
     path('files/<str:kind>/<int:pk>/', work.private_file),
     path('bot/contact/', work.bind_contact),

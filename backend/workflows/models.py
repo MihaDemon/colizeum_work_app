@@ -2,6 +2,7 @@ from api.fields import EvidenceImageField
 import uuid
 
 from django.conf import settings
+from django.utils import timezone
 from django.db import models
 from django.db.models import Q, Value
 from .photos import default_report_fields
@@ -121,8 +122,23 @@ class Activity(UserHistory):
         ordering = ['-created_at']
 
 
+class CleanerVisit(UserHistory):
+    shift = models.OneToOneField(Shift, on_delete=models.PROTECT, related_name='cleaner_visit', verbose_name='Смена')
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор')
+    occurred_at = models.DateTimeField(default=timezone.now, verbose_name='Время прихода')
+
+    class Meta:
+        verbose_name = 'Приход уборщицы'
+        verbose_name_plural = 'Приходы уборщицы'
+        ordering = ['-occurred_at', '-pk']
+
+
 class TelegramNotification(UserHistory):
-    submission = models.OneToOneField(TaskSubmission, on_delete=models.PROTECT, verbose_name='Выполнение задачи')
+    kind = models.CharField(max_length=12, default='task', choices=[('task', 'Задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица')], verbose_name='Событие')
+    message = models.TextField(blank=True, verbose_name='Текст уведомления')
+    submission = models.OneToOneField(TaskSubmission, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Выполнение задачи')
+    shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Смена')
+    expense = models.ForeignKey('reports.Expenses', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Расход')
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Получатель')
     status = models.CharField(max_length=10, default='pending', choices=[('pending', 'Ожидает отправки'), ('sending', 'Отправляется'), ('sent', 'Отправлено'), ('failed', 'Ошибка отправки')], verbose_name='Статус')
     attempts = models.PositiveIntegerField(default=0, verbose_name='Попытки отправки')
@@ -136,6 +152,15 @@ class TelegramNotification(UserHistory):
         verbose_name = 'Уведомление Telegram'
         verbose_name_plural = 'Уведомления Telegram'
         indexes = [models.Index(fields=['status', 'next_attempt_at'])]
+        constraints = [
+            models.CheckConstraint(condition=(
+                Q(kind='task', submission__isnull=False, shift__isnull=True, expense__isnull=True)
+                | Q(kind__in=['shift_open', 'shift_close', 'cleaner'], submission__isnull=True, shift__isnull=False, expense__isnull=True)
+                | Q(kind='expense', submission__isnull=True, shift__isnull=True, expense__isnull=False)
+            ), name='notification_has_matching_target'),
+            models.UniqueConstraint(fields=['kind', 'shift', 'recipient'], condition=Q(shift__isnull=False), name='unique_shift_event_recipient'),
+            models.UniqueConstraint(fields=['expense', 'recipient'], condition=Q(kind='expense'), name='unique_expense_recipient'),
+        ]
 
 
 class CommandReceipt(models.Model):

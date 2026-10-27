@@ -56,6 +56,10 @@ export interface Task {
 }
 
 export interface Shift {
+  adminName?: string;
+  cleanerVisitedAt?: string | null;
+  total?: string;
+  balance?: number;
   photoRequirements?: PhotoRequirement[];
   legacy?: boolean;
   id: string;
@@ -70,6 +74,8 @@ export interface Shift {
 }
 
 export interface Expense {
+  adminName?: string;
+  photos?: { url: string; label: string }[];
   id: string;
   adminId: string;
   shiftId?: string;
@@ -85,7 +91,7 @@ export interface Activity {
   title: string;
   description: string;
   time: string;
-  kind: "shift" | "task" | "expense" | "telegram";
+  kind: "shift" | "task" | "expense" | "telegram" | "cleaner";
   actorId?: string;
   managerId?: string;
 }
@@ -110,6 +116,7 @@ export type NewTask = Pick<
 };
 
 export type Action =
+  | { type: "MARK_CLEANER"; actorId: string; shiftId: string; confirmed: true }
   | { type: "OPEN_SHIFT"; actorId: string; shiftType: "day" | "night" }
   | {
       type: "CLOSE_SHIFT";

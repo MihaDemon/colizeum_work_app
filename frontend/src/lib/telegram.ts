@@ -38,6 +38,7 @@ interface TelegramWebApp {
   ): void;
   closeScanQrPopup(): void;
   requestContact?(callback: (shared: boolean) => void): void;
+  showConfirm?(message: string, callback: (confirmed: boolean) => void): void;
   downloadFile?(params: { url: string; file_name: string }): void;
   openLink?(url: string): void;
 }
@@ -48,6 +49,12 @@ declare global {
 }
 export const telegram = () => window.Telegram?.WebApp;
 export const inTelegram = () => Boolean(telegram()?.initData);
+export function confirmAction(message: string): Promise<boolean> {
+  const app = telegram();
+  if (inTelegram() && app?.isVersionAtLeast("6.2") && app.showConfirm)
+    return new Promise((resolve) => app.showConfirm!(message, resolve));
+  return Promise.resolve(window.confirm(message));
+}
 export function initializeTelegram(): () => void {
   const app = telegram();
   if (!app?.initData) return () => {};

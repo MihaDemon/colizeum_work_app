@@ -14,6 +14,25 @@ def iso(value):
     return value.isoformat() if value else None
 
 
+def participant_name(record, field):
+    user = getattr(record, field)
+    return person(user)['name'] if user else record.user_snapshots.get(field, {}).get('name', 'Удалённый сотрудник')
+
+
+def cleaner_data(visit):
+    return {'id': str(visit.pk), 'shiftId': str(visit.shift_id), 'adminId': participant_id(visit, 'admin'),
+            'adminName': participant_name(visit, 'admin'), 'occurredAt': iso(visit.occurred_at)}
+
+
+def expense_data(expense):
+    photos = list(expense.photos.all())
+    return {'id': str(expense.pk), 'adminId': participant_id(expense, 'admin'), 'adminName': participant_name(expense, 'admin'),
+            'shiftId': str(expense.work_shift_expense.shift_id) if hasattr(expense, 'work_shift_expense') else None,
+            'amount': float(expense.amount), 'description': expense.info, 'createdAt': iso(expense.date),
+            'photo': file_url('expense', photos[0].pk) if photos else None,
+            'photos': [{'url': file_url('expense', p.pk), 'label': 'Чек расхода'} for p in photos]}
+
+
 def task_data(task):
     submission = next(iter(task.submissions.all()), None)
     photos = []
@@ -38,10 +57,13 @@ def task_data(task):
 
 def shift_data(shift):
     report = shift.report
+    cleaner = getattr(shift, 'cleaner_visit', None)
     return {
         'id': str(shift.pk), 'adminId': participant_id(shift, 'admin'), 'type': shift.shift_type,
+        'adminName': participant_name(shift, 'admin'), 'cleanerVisitedAt': iso(cleaner.occurred_at) if cleaner else None,
         'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
         'photoRequirements': shift.photo_requirements,
+        **({'balance': float(CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0)} if not report else {}),
         **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
             'total': str(report.cash + report.cards + report.spb),
             'photos': {p.label or f'Фото {p.pk}': file_url('report', p.pk) for p in report.photos.all()}} if report else {}),
@@ -51,7 +73,7 @@ def shift_data(shift):
 def workspace_data(user):
     tasks = visible_tasks(user, Task.objects.select_related('creator', 'assignee').prefetch_related('submissions__photos'))
     photo_settings, _ = PhotoSettings.objects.get_or_create(pk=1)
-    shifts = Shift.objects.select_related('report').prefetch_related('report__photos')
+    shifts = Shift.objects.select_related('report', 'admin__phone_number', 'cleaner_visit').prefetch_related('report__photos')
     current = shifts.filter(closed_at__isnull=True).first()
     history = shifts.filter(closed_at__isnull=False)
     expenses = Expenses.objects.select_related('work_shift_expense').prefetch_related('photos').order_by('-date')

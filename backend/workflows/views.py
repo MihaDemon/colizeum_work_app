@@ -3,6 +3,7 @@ import hmac
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
+from django.db.models.functions import ExtractMonth, ExtractYear
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, viewsets
@@ -18,9 +19,10 @@ from users.phones import matching_staff_numbers
 from api.serializers import StaffPhoneField
 from . import services
 from .commands import idempotent_command
-from .models import Shift, Task, TaskSubmission, TaskSubmissionPhoto
+from .models import CleanerVisit, Shift, Task, TaskSubmission, TaskSubmissionPhoto
 from .permissions import visible_tasks
-from .presentation import task_data, workspace_data
+from .presentation import cleaner_data, expense_data, shift_data, task_data, workspace_data
+from .notifications import MOSCOW
 from .serializers import CloseShiftSerializer, CreateTaskSerializer, ExpenseSerializer, OpenShiftSerializer, PhotoSettingsSerializer, ReviewTaskSerializer, SubmitTaskSerializer
 
 
@@ -62,6 +64,28 @@ class ShiftViewSet(viewsets.GenericViewSet):
         return CloseShiftSerializer if self.action == 'close' else OpenShiftSerializer
 
     queryset = Shift.objects.all()
+
+    def get_queryset(self):
+        shifts = Shift.objects.select_related('report', 'admin__phone_number', 'cleaner_visit').prefetch_related('report__photos')
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            shifts = shifts.filter(admin=self.request.user)
+        return shifts
+
+    def retrieve(self, request, pk=None):
+        return Response(shift_data(self.get_object()))
+
+    @action(detail=True, methods=['post'])
+    @idempotent_command
+    def cleaner(self, request, pk=None):
+        class Confirmation(serializers.Serializer):
+            confirmed = serializers.BooleanField()
+
+            def validate_confirmed(self, value):
+                if not value:
+                    raise serializers.ValidationError('Подтвердите приход уборщицы.')
+                return value
+        validated(Confirmation, request)
+        return Response(cleaner_data(services.mark_cleaner(request.user, pk)), status=201)
 
     @action(detail=False, methods=['post'])
     @idempotent_command
@@ -119,6 +143,33 @@ def expense(request):
     except InsufficientCash as exc:
         raise ValidationError({'amount': exc.messages})
     return Response({'id': str(record.pk)}, status=201)
+
+
+@api_view(['GET'])
+def expense_details(request, pk):
+    from reports.models import Expenses
+    records = Expenses.objects.select_related('admin__phone_number', 'work_shift_expense').prefetch_related('photos')
+    if not (request.user.is_staff or request.user.is_superuser):
+        records = records.filter(admin=request.user)
+    return Response(expense_data(get_object_or_404(records, pk=pk)))
+
+
+@api_view(['GET'])
+def cleaner_history(request):
+    from django.utils import timezone
+    now = timezone.now().astimezone(MOSCOW)
+    class Period(serializers.Serializer):
+        month = serializers.IntegerField(min_value=1, max_value=12, default=now.month)
+        year = serializers.IntegerField(min_value=1, max_value=9999, default=now.year)
+    serializer = Period(data=request.query_params)
+    serializer.is_valid(raise_exception=True)
+    period = serializer.validated_data
+    visits = CleanerVisit.objects.select_related('admin__phone_number').annotate(
+        year=ExtractYear('occurred_at', tzinfo=MOSCOW), month=ExtractMonth('occurred_at', tzinfo=MOSCOW),
+    ).filter(**period)
+    if not (request.user.is_staff or request.user.is_superuser):
+        visits = visits.filter(admin=request.user)
+    return Response({**period, 'results': [cleaner_data(visit) for visit in visits]})
 
 
 @api_view(['GET'])

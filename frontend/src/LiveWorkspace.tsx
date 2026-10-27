@@ -85,6 +85,10 @@ export default function LiveWorkspace({ account }: { account: User }) {
       let path = "";
       const body = new FormData();
       switch (action.type) {
+        case "MARK_CLEANER":
+          path = `shifts/${action.shiftId}/cleaner/`;
+          body.append("confirmed", "true");
+          break;
         case "OPEN_SHIFT":
           path = "shifts/open/";
           body.append("shift_type", action.shiftType);

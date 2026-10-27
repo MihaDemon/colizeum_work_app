@@ -6,7 +6,7 @@ from workflows.notifications import deliver_one
 
 
 class Command(BaseCommand):
-    help = 'Deliver queued Telegram task notifications. Use --loop for the worker service.'
+    help = 'Отправить уведомления Telegram из очереди; --loop запускает постоянную обработку.'
 
     def add_arguments(self, parser):
         parser.add_argument('--loop', action='store_true')

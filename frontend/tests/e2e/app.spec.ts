@@ -43,6 +43,121 @@ test("administrators have neither logout nor report photo settings", async ({
   ).toHaveCount(0);
 });
 
+test("cleaner arrival requires acceptance and is disabled after saving and reload", async ({
+  page,
+}, info) => {
+  await setup(page);
+  await page.goto("/");
+  const button = page.getByRole("button", { name: "Уборщица", exact: true });
+  let sent = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/cleaner/")) sent += 1;
+  });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await button.click();
+  await expect(button).toBeEnabled();
+  expect(sent).toBe(0);
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("один раз за смену");
+    return dialog.accept();
+  });
+  const request = page.waitForRequest((request) =>
+    request.url().endsWith("/cleaner/"),
+  );
+  await button.click();
+  expect((await request).postData()).toContain('name="confirmed"\r\n\r\ntrue');
+  await expect(
+    page.getByRole("button", { name: /Уборщица · отмечено/ }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: /Уборщица · отмечено/ }),
+  ).toBeDisabled();
+  expect(sent).toBe(1);
+  await page.screenshot({
+    path: info.outputPath("cleaner-arrival.png"),
+    fullPage: true,
+  });
+});
+
+for (const options of [{ noShift: true }, { staff: true }, { owner: true }]) {
+  test(`cleaner arrival button is unavailable without own administrator shift ${JSON.stringify(options)}`, async ({
+    page,
+  }) => {
+    await setup(page, options);
+    await page.goto("/");
+    await expect(page.locator(".cp-bottom-nav")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Уборщица", exact: true }),
+    ).toHaveCount(0);
+  });
+}
+
+test("cleaner history filters month and opens the exact shift", async ({
+  page,
+}, info) => {
+  await setup(page, { staff: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: "Уборщица", exact: true }).click();
+  await page.getByLabel("Год", { exact: true }).fill("2026");
+  await page.getByLabel("Месяц", { exact: true }).selectOption("09");
+  await expect(page.getByText("За этот месяц отметок нет")).toBeVisible();
+  await page.getByLabel("Месяц", { exact: true }).selectOption("10");
+  await page.getByLabel("Год", { exact: true }).fill("2025");
+  await expect(page.getByText("За этот месяц отметок нет")).toBeVisible();
+  await page.getByLabel("Год", { exact: true }).fill("2026");
+  await expect(
+    page.getByText("Уборщица пришла 28/10/2026 в 12/34"),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("cleaner-history.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Детали смены" }),
+  ).toBeVisible();
+  await expect(page.getByText("51 500 ₽", { exact: true })).toBeVisible();
+  await page.evaluate(() =>
+    (window as unknown as { testBack: () => void }).testBack(),
+  );
+  await expect(page.getByLabel("Месяц", { exact: true })).toHaveValue("10");
+  await expect(page.getByLabel("Год", { exact: true })).toHaveValue("2026");
+});
+
+test("Telegram notification links open closed shift, expense and cleaner history", async ({
+  page,
+}) => {
+  await setup(page, { owner: true });
+  await page.goto("/?shift=1");
+  await expect(
+    page.getByRole("heading", { name: "Детали смены" }),
+  ).toBeVisible();
+  await expect(page.getByText("Закрыта: 28.10.2026 в 10:00")).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "Чек закрытия смены", exact: true }),
+  ).toBeVisible();
+  await page.goto("/?expense=2");
+  await expect(
+    page.getByRole("heading", { name: "Расход из кассы" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Средства для уборки", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "Чек расхода", exact: true }),
+  ).toBeVisible();
+  await page.goto("/?cleaner=2026-10");
+  await expect(
+    page.getByText("Уборщица пришла 28/10/2026 в 12/34"),
+  ).toBeVisible();
+  await page.goto("/?shift=404");
+  await expect(page.getByRole("alert")).toContainText("Запись недоступна");
+});
+
 for (const owner of [false, true]) {
   test(`${owner ? "superusers" : "managers"} can configure named report photos in More`, async ({
     page,
@@ -392,6 +507,7 @@ async function setup(
     route.fulfill({ contentType: "image/png", body: photo }),
   );
   let active = !options.noShift;
+  let cleanerVisitedAt: string | null = null;
   let balance = 1000;
   let taskStatus = "active";
   let contactChecks = 0;
@@ -532,6 +648,7 @@ async function setup(
                       photoRequirements: shiftFields,
                       type: "night",
                       openedAt: new Date().toISOString(),
+                      cleanerVisitedAt,
                     }
                   : null,
                 balance,
@@ -556,6 +673,59 @@ async function setup(
                 ],
               },
             },
+      });
+    if (path.endsWith("/shifts/shift-1/cleaner/"))
+      cleanerVisitedAt = new Date().toISOString();
+    if (path === "/api/cleaner-visits/") {
+      const period = new URL(route.request().url()).searchParams;
+      return route.fulfill({
+        json: {
+          results:
+            period.get("year") === "2026" && period.get("month") === "10"
+              ? [
+                  {
+                    id: "visit-1",
+                    shiftId: "1",
+                    adminName: "Алексей Смирнов",
+                    occurredAt: "2026-10-28T12:34:00+03:00",
+                  },
+                ]
+              : [],
+        },
+      });
+    }
+    if (path === "/api/shifts/1/" && method === "GET")
+      return route.fulfill({
+        json: {
+          id: "1",
+          adminId: "3",
+          adminName: "Администратор смены",
+          type: "night",
+          openedAt: "2026-10-27T22:00:00+03:00",
+          closedAt: "2026-10-28T10:00:00+03:00",
+          cash: 7000,
+          cards: 32000,
+          sbp: 12500,
+          total: "51500.00",
+          photos: { "Чек закрытия смены": "/api/files/report/1/" },
+        },
+      });
+    if (path === "/api/shifts/404/")
+      return route.fulfill({
+        status: 404,
+        json: { detail: "Запись недоступна." },
+      });
+    if (path === "/api/shift-expenses/2/" && method === "GET")
+      return route.fulfill({
+        json: {
+          id: "2",
+          adminId: "3",
+          adminName: "Администратор смены",
+          amount: 1250,
+          description: "Средства для уборки",
+          createdAt: "2026-10-28T12:00:00+03:00",
+          photos: [{ url: "/api/files/expense/1/", label: "Чек расхода" }],
+        },
       });
     if (path.endsWith("/shifts/open/")) {
       active = true;

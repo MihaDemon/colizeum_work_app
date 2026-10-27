@@ -5,8 +5,9 @@ from django.utils.formats import number_format
 from rest_framework.exceptions import APIException, PermissionDenied
 
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
-from .models import Activity, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
-from .permissions import role
+from .models import Activity, CleanerVisit, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
+from .permissions import person, role
+from .notifications import MOSCOW, queue_management
 from .photos import uploaded_photos, validate_photos
 
 
@@ -46,6 +47,8 @@ def open_shift(user, data):
     settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     shift = Shift.objects.create(admin=user, photo_requirements=settings.report_fields, **data)
     event(user, 'Смена открыта', shift.get_shift_type_display())
+    register = CashRegister.objects.get(pk=1)
+    queue_management('shift_open', f'Смена открыта\nАдминистратор: {person(user)["name"]}\nТип: {shift.get_shift_type_display()}\nВремя: {shift.opened_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}\nНаличные в кассе: {number_format(register.balance, decimal_pos=2, force_grouping=True)} ₽', shift=shift)
     return shift
 
 
@@ -73,6 +76,9 @@ def close_shift(user, pk, data):
     # Unfinished shift assignments remain actionable on the recipient's next shift.
     Task.objects.filter(shift=shift).exclude(status=Task.Status.ACCEPTED).update(shift=None)
     event(user, 'Смена закрыта', f'Итого: {number_format(report.cash + report.cards + report.spb, decimal_pos=2, force_grouping=True)} ₽')
+    total = report.cash + report.cards + report.spb
+    amounts = '\n'.join(f'{label}: {number_format(amount, decimal_pos=2, force_grouping=True)} ₽' for label, amount in [('Наличные', report.cash), ('Карта', report.cards), ('СБП', report.spb), ('Итого', total), ('Наличные в кассе', CashRegister.objects.get(pk=1).balance)])
+    queue_management('shift_close', f'Смена закрыта\nАдминистратор: {person(user)["name"]}\nТип: {shift.get_shift_type_display()}\nВремя: {shift.closed_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}\n{amounts}', shift=shift)
     return shift
 
 
@@ -85,7 +91,23 @@ def add_expense(user, data):
     if data.get('photo'):
         ExpensePhoto.objects.create(expense=expense, image=data['photo'])
     event(user, 'Расход сохранён', f"{number_format(expense.amount, decimal_pos=2, force_grouping=True)} ₽ · {expense.info}", kind='expense')
+    queue_management('expense', f'Расход из кассы\nАдминистратор: {person(user)["name"]}\nСумма: {number_format(expense.amount, decimal_pos=2, force_grouping=True)} ₽\nПричина: {expense.info[:2000]}\nВремя: {expense.date.astimezone(MOSCOW):%d/%m/%Y %H:%M}\nНаличные в кассе: {number_format(CashRegister.objects.get(pk=1).balance, decimal_pos=2, force_grouping=True)} ₽', expense=expense)
     return expense
+
+
+@transaction.atomic
+def mark_cleaner(user, pk):
+    lock_register(user)
+    shift = own_shift(user)
+    if str(shift.pk) != str(pk):
+        raise Conflict('Эта смена больше не является вашей текущей сменой.')
+    if CleanerVisit.objects.filter(shift=shift).exists():
+        raise Conflict('Приход уборщицы уже отмечен в этой смене.')
+    visit = CleanerVisit.objects.create(shift=shift, admin=user, occurred_at=timezone.now())
+    message = f'Уборщица пришла {visit.occurred_at.astimezone(MOSCOW):%d/%m/%Y в %H/%M}'
+    event(user, 'Приход уборщицы', message, kind='cleaner')
+    queue_management('cleaner', message, shift=shift)
+    return visit
 
 
 @transaction.atomic

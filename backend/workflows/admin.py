@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import Activity, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
+from .models import Activity, CleanerVisit, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 from .forms import WorkflowForm
 
 
@@ -34,8 +34,8 @@ class TaskAdmin(WorkflowAdmin):
 
 @admin.register(TelegramNotification)
 class NotificationAdmin(WorkflowAdmin):
-    list_display = ['id', 'recipient', 'status', 'attempts', 'last_error', 'sent_at']
-    list_filter = ['status']
+    list_display = ['id', 'kind', 'recipient', 'status', 'attempts', 'last_error', 'sent_at']
+    list_filter = ['kind', 'status']
     actions = ['retry_failed']
 
     @admin.action(description='Повторить отправку выбранных уведомлений', permissions=['view'])
@@ -49,3 +49,9 @@ admin.site.register(TaskSubmission, WorkflowAdmin)
 admin.site.register(TaskSubmissionPhoto, WorkflowAdmin)
 admin.site.register(PhotoSettings, WorkflowAdmin)
 admin.site.register(ShiftExpense, WorkflowAdmin)
+
+
+@admin.register(CleanerVisit)
+class CleanerVisitAdmin(WorkflowAdmin):
+    list_display = ['id', 'shift', 'admin', 'occurred_at']
+    list_filter = ['occurred_at', 'admin']

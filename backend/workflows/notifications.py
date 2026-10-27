@@ -4,6 +4,8 @@ import uuid
 from datetime import timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
@@ -11,17 +13,45 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import TelegramNotification
 
+MOSCOW = ZoneInfo('Europe/Moscow')
+
+
+def mini_app_url(**target):
+    parts = urlsplit(settings.WEBAPP_URL)
+    params = [(key, value) for key, value in parse_qsl(parts.query) if key not in ('task', 'shift', 'expense', 'cleaner')]
+    return urlunsplit(parts._replace(query=urlencode(params + list(target.items()))))
+
+
+def queue_management(kind, message, *, shift=None, expense=None):
+    from django.contrib.auth import get_user_model
+    recipients = get_user_model().objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True)).exclude(telegram_id__isnull=True).exclude(telegram_id='')
+    TelegramNotification.objects.bulk_create([
+        TelegramNotification(kind=kind, message=message, shift=shift, expense=expense,
+                             recipient=recipient, next_attempt_at=timezone.now())
+        for recipient in recipients
+    ])
+
 
 def telegram_send(recipient, task):
     if recipient is None:
         raise DeliveryError('Получатель удалён.')
     if not settings.TELEGRAM_BOT_TOKEN or not recipient.telegram_id or not recipient.is_active:
         raise DeliveryError('Не указан токен бота или Telegram ID получателя.')
-    payload = {'chat_id': recipient.telegram_id,
-               'text': f'Задача выполнена: {task.title}\nРезультат ожидает вашей проверки.'}
+    if isinstance(task, TelegramNotification):
+        text = task.message
+        if task.kind == 'expense':
+            label, target = 'Открыть расход', {'expense': task.expense_id}
+        elif task.kind == 'cleaner':
+            visit = getattr(task.shift, 'cleaner_visit', None)
+            label, target = 'История уборщицы', {'cleaner': (visit.occurred_at if visit else task.created_at).astimezone(MOSCOW).strftime('%Y-%m')}
+        else:
+            label, target = 'Открыть смену', {'shift': task.shift_id}
+    else:
+        text = f'Задача выполнена: {task.title}\nРезультат ожидает вашей проверки.'
+        label, target = 'Проверить задачу', {'task': task.pk}
+    payload = {'chat_id': recipient.telegram_id, 'text': text}
     if settings.WEBAPP_URL:
-        separator = '&' if '?' in settings.WEBAPP_URL else '?'
-        payload['reply_markup'] = {'inline_keyboard': [[{'text': 'Проверить задачу', 'web_app': {'url': f'{settings.WEBAPP_URL}{separator}task={task.pk}'}}]]}
+        payload['reply_markup'] = {'inline_keyboard': [[{'text': label, 'web_app': {'url': mini_app_url(**target)}}]]}
     request = Request(f'https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage',
                       data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}, method='POST')
     try:
@@ -53,14 +83,17 @@ def deliver_one(send=telegram_send):
         job.attempts += 1
         job.next_attempt_at = now + timedelta(minutes=2)
         job.save(update_fields=['status', 'claim_token', 'attempts', 'next_attempt_at'])
-    job = TelegramNotification.objects.select_related('recipient', 'submission__task').filter(pk=job.pk).first()
+    job = TelegramNotification.objects.select_related('recipient', 'submission__task', 'shift__cleaner_visit').filter(pk=job.pk).first()
     if job is None or job.status != 'sending' or job.claim_token != claim:
         return True
     if job.recipient_id is None:
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель удалён.')
         return True
+    if job.kind != 'task' and not (job.recipient.is_staff or job.recipient.is_superuser):
+        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель больше не управляющий или суперпользователь.')
+        return True
     try:
-        send(job.recipient, job.submission.task)
+        send(job.recipient, job.submission.task if job.kind == 'task' else job)
     except Exception as exc:
         # Never persist HTTP exception URLs (which include the bot token).
         message = str(exc) if isinstance(exc, DeliveryError) else 'Не удалось доставить уведомление.'

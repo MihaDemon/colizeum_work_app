@@ -226,6 +226,16 @@ html.mini-app-page,
   gap: 12px;
   margin-top: 18px;
 }
+.cp-cleaner-action {
+  grid-column: 1 / -1;
+}
+.cp-cleaner-record {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--cp-line);
+}
+.cp-cleaner-record p {
+  margin: 8px 0 16px;
+}
 .cp-button {
   display: inline-flex;
   align-items: center;

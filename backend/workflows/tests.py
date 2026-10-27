@@ -114,7 +114,7 @@ class WorkflowTests(APITestCase):
         self.assertEqual(self.client.post(f'/api/tasks/{pk}/submit/', {'note': 'done', 'photo': photo()}).status_code, 200)
         workspace = self.client.get('/api/workspace/').data
         self.assertEqual(workspace['state']['tasks'][0]['status'], 'moderation')
-        self.assertEqual(TelegramNotification.objects.count(), 1)
+        self.assertEqual(TelegramNotification.objects.filter(kind='task').count(), 1)
         self.assertEqual(self.client.post(f'/api/tasks/{pk}/submit/').status_code, 409)
         self.act_as(self.manager2)
         self.assertEqual(self.client.post(f'/api/tasks/{pk}/review/', {'accept': True, 'version': 1}).status_code, 404)
@@ -131,7 +131,7 @@ class WorkflowTests(APITestCase):
         self.assertEqual(self.client.post(f'/api/tasks/{pk}/review/', {'accept': True, 'version': 1}).status_code, 409)
         self.assertEqual(self.client.post(f'/api/tasks/{pk}/review/', {'accept': True, 'version': 2}).status_code, 200)
         self.assertEqual(TaskSubmission.objects.filter(task_id=pk).count(), 2)
-        self.assertEqual(TelegramNotification.objects.count(), 2)
+        self.assertEqual(TelegramNotification.objects.filter(kind='task').count(), 2)
         self.assertEqual(Task.objects.get(pk=pk).status, 'accepted')
 
     def test_assignment_roles_and_manager_personal_tasks_without_shift(self):
@@ -213,6 +213,7 @@ class WorkflowTests(APITestCase):
         pk = self.create_task()
         self.act_as(self.admin)
         self.client.post(f'/api/tasks/{pk}/submit/', {'note': 'ready'})
+        TelegramNotification.objects.exclude(kind='task').delete()
         def fail(recipient, task):
             raise DeliveryError('Telegram HTTP 503.')
         self.assertTrue(deliver_one(send=fail))

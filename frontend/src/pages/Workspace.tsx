@@ -36,9 +36,16 @@ import {
   IconLock,
   IconMessageCircle,
   IconInfoCircle,
+  IconBrush,
 } from "@tabler/icons-react";
 import { Equipment } from "../pages/Equipment";
 import { PrivateImage } from "../components/PrivateImage";
+import {
+  CleanerHistory,
+  NotificationDetails,
+  notificationTarget,
+  type RecordTarget,
+} from "../components/ShiftEvents";
 import Upload from "../components/PhotoUpload";
 import {
   EvidenceUploads,
@@ -64,6 +71,7 @@ import {
   initializeTelegram,
   inTelegram,
   telegram,
+  confirmAction,
 } from "../lib/telegram";
 import { useDraft } from "../lib/useDraft";
 import {
@@ -76,6 +84,7 @@ import {
 import "./workspace.css";
 
 type View =
+  | "cleaner"
   | "shift"
   | "tasks"
   | "expenses"
@@ -176,8 +185,17 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const { person } = usePeople();
   const busy = workspace.busy;
   const running = useRef(false);
+  const cleanerPrompt = useRef(false);
   const [saveError, setSaveError] = useState("");
-  const [view, setView] = useState<View>("shift");
+  const [view, setView] = useState<View>(() =>
+    new URLSearchParams(location.search).has("cleaner") ? "cleaner" : "shift",
+  );
+  const [linkedRecord, setLinkedRecord] = useState<RecordTarget | null>(() =>
+    notificationTarget(location.search),
+  );
+  const [cleanerMonth, setCleanerMonth] = useState(
+    () => new URLSearchParams(location.search).get("cleaner") || undefined,
+  );
   const [form, setForm] = useState<Form>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(() =>
     new URLSearchParams(location.search).get("task"),
@@ -189,7 +207,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const [dirty, setDirty] = useState(false);
   const user = workspace.user;
   const isManager = user.role !== "admin";
-  const ownsShift = state.shift?.adminId === user.id;
+  const ownsShift = user.role === "admin" && state.shift?.adminId === user.id;
   const embedded = inTelegram();
   const tasks = visibleTasks(state, user);
   const scopedTasks =
@@ -212,8 +230,15 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const isMain = view === "shift" || view === "tasks";
   const nested = Boolean(
     form ||
+    linkedRecord ||
     selectedTask ||
-    ["history", "expenses", "notifications", "photo-settings"].includes(view),
+    [
+      "history",
+      "expenses",
+      "notifications",
+      "photo-settings",
+      "cleaner",
+    ].includes(view),
   );
   const navigate = useCallback((target: View) => {
     if (equipmentDraft.current.busy) return;
@@ -223,6 +248,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     )
       return;
     setView(target);
+    setLinkedRecord(null);
     setForm(null);
     setSelectedTask(null);
     setFilter("all");
@@ -233,11 +259,12 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     if (busy) return;
     if (dirty && !window.confirm("Выйти без сохранения изменений?")) return;
     setDirty(false);
-    if (form) setForm(null);
+    if (linkedRecord) setLinkedRecord(null);
+    else if (form) setForm(null);
     else if (selectedTask) setSelectedTask(null);
     else navigate("more");
     window.scrollTo({ top: 0 });
-  }, [dirty, busy, form, selectedTask, navigate]);
+  }, [dirty, busy, linkedRecord, form, selectedTask, navigate]);
   const openShiftHistory = () => {
     setHistoryTab("shifts");
     navigate("history");
@@ -298,6 +325,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const activities = state.activity.filter(
     (item) =>
       user.role === "superuser" ||
+      (isManager && item.kind !== "task") ||
       (isManager
         ? item.managerId === user.id ||
           item.actorId === user.id ||
@@ -331,7 +359,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   );
   return (
     <div
-      className={`cp-app${embedded ? " cp-in-telegram" : ""}${form || selected ? " cp-focused" : ""}`}
+      className={`cp-app${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord ? " cp-focused" : ""}`}
       onChange={() => {
         if (form || selectedTask || view === "photo-settings") setDirty(true);
       }}
@@ -366,7 +394,9 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           </p>
         )}
         <fieldset className="cp-workspace-controls" disabled={busy}>
-          {form ? (
+          {linkedRecord ? (
+            <NotificationDetails target={linkedRecord} onBack={back} />
+          ) : form ? (
             <WorkflowForm
               key={`${form}-${user.id}`}
               kind={form}
@@ -491,6 +521,45 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           <IconDoorExit size={18} />
                           Закрыть смену
                         </button>
+                        <button
+                          className="cp-button cp-button-secondary cp-cleaner-action"
+                          disabled={Boolean(state.shift?.cleanerVisitedAt)}
+                          onClick={async () => {
+                            if (cleanerPrompt.current) return;
+                            const shiftId = state.shift?.id;
+                            if (!shiftId) return;
+                            cleanerPrompt.current = true;
+                            try {
+                              if (
+                                !shiftId ||
+                                !(await confirmAction(
+                                  "Подтвердить приход уборщицы? Отметить приход можно только один раз за смену.",
+                                ))
+                              )
+                                return;
+                              await save(
+                                {
+                                  type: "MARK_CLEANER",
+                                  actorId: user.id,
+                                  shiftId,
+                                  confirmed: true,
+                                },
+                                "Приход уборщицы отмечен. Управляющие и суперпользователи получат уведомление.",
+                              );
+                            } catch {
+                              setSaveError(
+                                "Не удалось подтвердить приход уборщицы. Повторите попытку.",
+                              );
+                            } finally {
+                              cleanerPrompt.current = false;
+                            }
+                          }}
+                        >
+                          <IconBrush size={18} />
+                          {state.shift?.cleanerVisitedAt
+                            ? `Уборщица · отмечено в ${time(state.shift.cleanerVisitedAt)}`
+                            : "Уборщица"}
+                        </button>
                       </div>
                     )}
                   </>
@@ -605,6 +674,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         label: "Уведомления",
                         icon: IconBell,
                       },
+                      {
+                        id: "cleaner" as const,
+                        label: "Уборщица",
+                        icon: IconBrush,
+                      },
                       ...(isManager
                         ? [
                             {
@@ -641,6 +715,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   onBack={back}
                   onDirty={() => setDirty(true)}
                   onSave={(action, message) => save(action, message)}
+                />
+              )}
+              {view === "cleaner" && (
+                <CleanerHistory
+                  initialMonth={cleanerMonth}
+                  onMonthChange={setCleanerMonth}
+                  onBack={back}
+                  onOpenShift={(id) => setLinkedRecord({ kind: "shift", id })}
                 />
               )}
               {view === "expenses" && (
@@ -833,7 +915,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           )}
         </fieldset>
       </main>
-      {!form && !selected && (
+      {!form && !selected && !linkedRecord && (
         <nav className="cp-bottom-nav" aria-label="Основная навигация">
           <button
             aria-current={isMain ? "page" : undefined}
