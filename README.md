@@ -1,22 +1,143 @@
 # Colizeum Work
 
-Telegram Mini App for administrator shifts, cash expenses, task assignment and moderation, and club equipment. The app uses authenticated Django APIs. Managers see tasks they assigned or received; superusers can assign and review tasks across the team.
+**Рабочее приложение компьютерного клуба внутри Telegram: смены, касса, задачи и оборудование.**
 
-The Mini App, Django administration, validation messages, and Telegram notifications use Russian. Dates and amounts use Russian formats and Moscow time; monetary inputs accept decimal commas. User-entered names, task instructions, and photo labels are preserved.
+Администратор открывает смену, выполняет задачи, учитывает расходы и отправляет отчёт. Управляющий следит за текущей сменой и кассой, назначает задачи и проверяет результаты. Суперпользователь управляет доступом сотрудников и контролирует работу всей команды.
 
-## Production setup
+Интерфейс Mini App, панель Django, уведомления бота и сообщения об ошибках — на русском языке. Даты и время отображаются по Москве, суммы — в рублях. Денежные поля принимают запятую и точку в качестве десятичного разделителя.
 
-Use one root `.env` and the single nginx configuration at `infra/nginx.conf`.
+> **Использование только с разрешения автора.** Личный, коммерческий, некоммерческий и локальный запуск запрещены без предварительного письменного разрешения [MihaDemon](https://github.com/MihaDemon). Полные условия — в [LICENSE](LICENSE).
 
-1. Create the root `.env` from `.env.example` if you do not already have one. Fill in `DJANGO_SECRET_KEY`, PostgreSQL credentials, `TELEGRAM_BOT_TOKEN`, `BOT_SERVICE_TOKEN`, and your public `WEBAPP_URL`. Use independent random secrets, for example:
+## Как выглядит приложение
+
+Скриншоты сделаны в браузере из текущего интерфейса Mini App на вымышленных данных с имитацией окружения Telegram. Это примеры экранов, а не сведения о реальных сотрудниках, платежах или сменах. Системная оболочка Telegram в снимки не входит.
+
+<table>
+  <tr>
+    <th>Администратор: текущая смена</th>
+    <th>Управляющий: задачи и касса</th>
+    <th>Оборудование клуба</th>
+  </tr>
+  <tr>
+    <td><img src='docs/screenshots/01-administrator-shift.png' width='260' alt='Экран администратора: дневная смена, наличные в кассе, расходы и задачи'></td>
+    <td><img src='docs/screenshots/02-manager-tasks.png' width='260' alt='Экран управляющего: активная смена, сумма в кассе и поставленные задачи'></td>
+    <td><img src='docs/screenshots/07-devices.png' width='260' alt='Раздел устройств: игровые места, категории оборудования и поиск по QR-коду'></td>
+  </tr>
+</table>
+
+## Возможности и роли
+
+| Роль | Что доступно |
+| --- | --- |
+| **Администратор** | Открытие и закрытие своей смены, выполнение назначенных задач, отправка фотографий, учёт расходов, просмотр доступной истории и оборудования. |
+| **Управляющий** | Активная смена и касса, задачи администратору текущей смены, проверка поставленных задач, личные задачи от суперпользователя, история и настройка фотографий отчёта. |
+| **Суперпользователь** | Назначение задач администраторам и управляющим, просмотр и проверка всех задач, управление сотрудниками, полный доступ к созданию, изменению и удалению записей в Django Admin. Личных задач у суперпользователя нет. |
+
+- **Одна активная смена.** Пока предыдущая смена открыта, другой администратор не может открыть новую. Тип смены выбирается при открытии и сохраняется до закрытия.
+- **Касса и расходы.** Расход уменьшает наличные, требует сумму и описание; фотография чека необязательна. Списать больше остатка нельзя.
+- **Задачи с проверкой.** Выполнение проходит через статус «На проверке». Принятие завершает задачу, отклонение возвращает её на доработку с объяснением.
+- **Настраиваемые фотографии.** Для отчётов и задач можно задавать названия и обязательность снимков. Для задач также доступны одно фото или несколько фото без отдельных названий.
+- **История смен.** В разделе «Ещё» доступны закрытые смены с разбивкой по наличным, карте и СБП, общей выручкой и фотографиями отчёта.
+- **Оборудование.** Игровые места, компьютеры, мыши, клавиатуры, наушники, мониторы и PlayStation с отдельными значками. Поиск устройства — через камеру и QR-код.
+- **Уведомления в Telegram.** После выполнения задачи её постановщик получает уведомление и может перейти к проверке.
+
+## Как пользоваться Mini App
+
+### 1. Получить доступ и открыть смену
+
+Суперпользователь добавляет сотрудника в Django Admin: имя, фамилию, телефон и роль. Сотрудник открывает приложение через бота, подтверждает собственный контакт в Telegram и выбирает логин. После регистрации номер телефона в интерфейсе не показывается; при следующих открытиях вход выполняется автоматически.
+
+Администратор нажимает **«Открыть смену»**, выбирает дневную или ночную смену и подтверждает открытие. На главном экране появляются касса, задачи, кнопки **«Добавить расход»** и **«Закрыть смену»**. Управляющий видит активную смену и остаток кассы на странице задач.
+
+### 2. Выполнить задачу и пройти проверку
+
+Управляющий назначает задачу администратору текущей смены. Суперпользователь также может назначить задачу управляющему. В задаче указываются описание, приоритет и требования к фотографиям.
+
+Администратор открывает задачу, прикладывает обязательные снимки, при необходимости оставляет комментарий и нажимает **«Закрыть задачу»**. Задача остаётся в его списке со статусом **«На проверке»**. Постановщик получает уведомление в Telegram и принимает результат либо возвращает задачу на доработку. Только после принятия задача исчезает из текущего списка администратора.
+
+<table>
+  <tr>
+    <th>Выполнение задачи</th>
+    <th>Проверка управляющим</th>
+  </tr>
+  <tr>
+    <td><img src='docs/screenshots/03-task-completion.png' width='300' alt='Задача администратора с описанием и обязательным именованным полем для фотографии'></td>
+    <td><img src='docs/screenshots/04-task-review.png' width='300' alt='Проверка выполненной задачи: комментарий сотрудника и кнопки принятия или отклонения'></td>
+  </tr>
+</table>
+
+### 3. Учесть расход и закрыть смену
+
+Для расхода укажите сумму и причину. Фотографию чека можно приложить дополнительно. При закрытии смены внесите выручку наличными, по карте и через СБП, затем загрузите фотографии по настроенным полям. Тип смены берётся из её открытия. В кассу добавляется только наличная выручка; карта и СБП входят в общую сумму отчёта.
+
+<table>
+  <tr>
+    <th>Расход из кассы</th>
+    <th>Отчёт при закрытии смены</th>
+  </tr>
+  <tr>
+    <td><img src='docs/screenshots/09-cash-expense.png' width='300' alt='Форма расхода: сумма, обязательное описание и остаток наличных после списания'></td>
+    <td><img src='docs/screenshots/05-shift-report.png' width='300' alt='Закрытие смены: сохранённый тип, выручка наличными, по карте и СБП, общая сумма и поля фотографий'></td>
+  </tr>
+</table>
+
+### 4. Посмотреть историю и настроить фотографии
+
+История смен доступна через **«Ещё → История смен»**. Откройте смену, чтобы увидеть разбивку платежей и общий итог. На странице задач управляющего остаётся баннер активной смены; история вынесена в «Ещё».
+
+В разделе **«Ещё → Фотографии отчёта»** управляющий или суперпользователь добавляет поля, задаёт названия снимков и отмечает обязательные. Изменения применяются к следующим сменам: открытая смена сохраняет требования, действовавшие в момент открытия.
+
+<table>
+  <tr>
+    <th>История и итоги смены</th>
+    <th>Настройка фотографий отчёта</th>
+  </tr>
+  <tr>
+    <td><img src='docs/screenshots/06-shift-history.png' width='300' alt='История закрытых смен с общей выручкой и разбивкой по наличным, карте и СБП'></td>
+    <td><img src='docs/screenshots/08-report-photo-settings.png' width='300' alt='Именованные поля фотографий отчёта с переключателями обязательности'></td>
+  </tr>
+</table>
+
+### 5. Найти устройство по QR-коду
+
+Откройте **«Устройства»**, запустите сканирование и наведите камеру на QR-код игрового места. В карточке доступны сведения об оборудовании и скачивание QR-кода. Ввод поискового запроса вместо камеры не предусмотрен. Управление инвентарём зависит от роли сотрудника.
+
+В Telegram 8.0 и новее QR-код скачивается через встроенный диалог. На старых клиентах используется внешний браузер. Ссылка действует пять минут и даёт доступ только к одному PNG-файлу; токен авторизации в неё не включается.
+
+## Технологии и устройство проекта
+
+| Часть | Технологии и назначение |
+| --- | --- |
+| Интерфейс | React 19, TypeScript, Vite, Telegram Mini Apps API. |
+| Сервер | Django, Django REST Framework, Gunicorn; проверка доступа и бизнес-правил. |
+| База данных | PostgreSQL 16; смены, задачи, отчёты, расходы и история. |
+| Telegram-бот | aiogram; открытие приложения и обработка контакта, запрошенного из Mini App. |
+| Уведомления | Очередь в базе данных и отдельный обработчик повторных отправок. |
+| Развёртывание | Docker Compose и один внутренний nginx; HTTPS на nginx хоста. |
+
+```text
+Telegram → nginx хоста с HTTPS → внутренний nginx
+                                  ├── React
+                                  └── Django API → PostgreSQL
+Telegram-бот → Django API
+Обработчик уведомлений → Telegram
+```
+
+Код интерфейса расположен в `frontend/`, сервер — в `backend/`, бот — в `bot/`. Конфигурация внутреннего nginx находится в `infra/nginx.conf`. Настройки всех сервисов хранятся в одном корневом `.env`.
+
+## Развёртывание на сервере
+
+Инструкции ниже предназначены для владельца проекта и пользователей, получивших письменное разрешение. Публикация инструкций не предоставляет разрешения на использование.
+
+1. Если корневого `.env` ещё нет, создайте его из `.env.example`. Заполните `DJANGO_SECRET_KEY`, параметры PostgreSQL, `TELEGRAM_BOT_TOKEN`, `BOT_SERVICE_TOKEN` и публичный адрес `WEBAPP_URL`. Для каждого секрета используйте отдельное случайное значение, например:
 
    ```sh
    python -c 'import secrets; print(secrets.token_urlsafe(48))'
    ```
 
-2. Set `DJANGO_ALLOWED_HOSTS` to include your domain, `localhost`, `127.0.0.1`, and `backend`. Set `DJANGO_CSRF_TRUSTED_ORIGINS=https://your-domain`. Keep `DJANGO_SECURE_COOKIES=True` for HTTPS production.
-3. Configure your host nginx to terminate HTTPS and proxy to `127.0.0.1:8000` (`GATEWAY_PORT` overrides this port). Forward the original `Host`, client IP headers, and `X-Forwarded-Proto=$scheme`. The internal gateway preserves that trusted protocol header.
-4. Start the services:
+2. В `DJANGO_ALLOWED_HOSTS` добавьте домен приложения, `localhost`, `127.0.0.1` и `backend`. В `DJANGO_CSRF_TRUSTED_ORIGINS` укажите полный HTTPS-адрес, например `https://work.colizeum-perovo.com`. Для HTTPS оставьте `DJANGO_SECURE_COOKIES=True`.
+3. Настройте nginx на хосте: HTTPS и проксирование на локальный порт шлюза. По умолчанию это `127.0.0.1:8000`; параметр `GATEWAY_PORT` меняет порт. Если другое приложение уже занимает `8000`, используйте `GATEWAY_PORT=8001` и направьте домен рабочего приложения на `127.0.0.1:8001`. Передавайте исходный `Host`, IP клиента и `X-Forwarded-Proto=$scheme`; внутренний шлюз сохраняет доверенный протокол.
+4. Запустите сервисы:
 
    ```sh
    docker compose up -d --build
@@ -24,65 +145,65 @@ Use one root `.env` and the single nginx configuration at `infra/nginx.conf`.
    docker compose logs migrate backend scheduler telegram_bot infra
    ```
 
-5. Set the bot's Mini App URL in BotFather to `WEBAPP_URL`. Start a private chat with the bot before expecting notifications. Run one polling bot per token; remove an old webhook intentionally before switching a bot to polling.
+5. В BotFather задайте адрес Mini App, совпадающий с `WEBAPP_URL`. Перед ожиданием уведомлений сотрудник должен открыть личный чат с ботом. Для одного токена запускайте один экземпляр бота с опросом Telegram. Если ранее использовался вебхук, удалите его перед переходом на опрос.
 
-| Service | Purpose |
+| Сервис | Назначение |
 | --- | --- |
-| `db` | PostgreSQL 16 |
-| `migrate` | Apply migrations, collect Django static files, optionally create the initial owner |
-| `backend` | Django/Gunicorn, internal port 8000 |
-| `scheduler` | Deliver queued Telegram task notifications |
-| `frontend` | Publish compiled React assets to the shared volume |
-| `telegram_bot` | Launch the Mini App and process contacts requested inside it |
-| `infra` | nginx gateway, bound to localhost only |
+| `db` | База PostgreSQL 16. |
+| `migrate` | Миграции, сбор статики Django и создание первого суперпользователя, если заданы его настройки. |
+| `backend` | Django и Gunicorn; внутренний порт `8000`. |
+| `scheduler` | Отправка уведомлений Telegram из очереди. |
+| `frontend` | Копирование собранного интерфейса в общий том. |
+| `telegram_bot` | Открытие Mini App и обработка контактов. |
+| `infra` | Внутренний nginx; порт опубликован только на локальном интерфейсе хоста. |
 
-`migrate` and `frontend` are one-time jobs; **Exited (0)** is their normal state. The gateway waits for the backend and frontend assets. Rebuild after source changes with `docker compose up -d --build --force-recreate`.
+`migrate` и `frontend` выполняются однократно: состояние **Exited (0)** для них нормально. Шлюз ожидает готовности сервера и файлов интерфейса. После обновления исходников пересоберите и пересоздайте сервисы:
 
-The frontend runtime contains compiled assets only. Backend and bot images exclude tests, development artifacts, local databases, credentials, and uploads. There is no demo route or development-token login. For local frontend development, Vite also reads the root `.env`; only `VITE_*` variables are exposed to the browser. Never use that prefix for secrets.
+```sh
+docker compose up -d --build --force-recreate
+```
 
-## Owner and staff access
+В образ интерфейса попадают только собранные файлы. Сервер и бот исключают тесты, локальные базы, загруженные фотографии, секреты и служебные материалы разработки. Демонстрационного входа или маршрута обхода авторизации нет.
 
-Set `OWNER_USERNAME`, a strong `OWNER_PASSWORD`, and optionally `OWNER_TELEGRAM_ID` before the first startup. Initialization creates this superuser only if the username does not already exist. Subsequent starts do not overwrite its access or password. Alternatively:
+## Суперпользователь и доступ сотрудников
+
+Перед первым запуском задайте `OWNER_USERNAME`, надёжный `OWNER_PASSWORD` и, при необходимости, `OWNER_TELEGRAM_ID`. Инициализация создаёт суперпользователя, только если такого логина ещё нет. При последующих запусках пароль и права существующего пользователя не перезаписываются. Альтернативный способ:
 
 ```sh
 docker compose exec backend python manage.py createsuperuser
 ```
 
-The superuser opens `/admin/` → **Администраторы** and creates an `AdminUser` with the person's first name, surname, phone number, and role: **Администратор** (`admin`) or **Управляющий** (`manager`). Phone numbers may be entered as 10 digits, with `+7`, or with `8`; new records store 10 digits. No Telegram ID, username, or password is needed at this step, and no `User` account is created yet.
+В `/admin/` откройте **«Администраторы»** и создайте карточку `AdminUser`: имя, фамилия, телефон и роль **«Администратор»** (`admin`) либо **«Управляющий»** (`manager`). Допускаются десять цифр, номер с `+7` или с `8`; новые записи сохраняют десять цифр. Telegram ID, логин и пароль на этом этапе не нужны. Учётная запись `User` пока не создаётся.
 
-The person sends `/start` to the bot, opens the Mini App, and shares their own contact using **Подтвердить телефон Telegram**. The verified phone must match the staff record. The person chooses a username and completes registration, which creates a normal `User` linked to that `AdminUser`, copying the name, surname, and selected role. Administrator accounts have `is_staff=False`; manager accounts have `is_staff=True`. Neither gets superuser permissions. There is no bot contact keyboard, manual phone entry, or password step. Telegram 6.9 or newer is required for the contact popup. Existing accounts sign in automatically.
+Сотрудник отправляет `/start` боту, открывает Mini App и нажимает **«Подтвердить телефон Telegram»**. Контакт должен принадлежать самому сотруднику, а номер — совпадать с карточкой допуска. После выбора логина создаётся обычный `User` с именем, фамилией и ролью из карточки. Для администраторов используется `is_staff=False`, для управляющих — `is_staff=True`; права суперпользователя им не выдаются. Ручного ввода телефона и контактной клавиатуры бота нет. Запрос контакта требует Telegram 6.9 или новее.
 
-The Telegram ID on `AdminUser` is filled automatically and is read-only in Django administration. Changing an existing staff record's role updates its linked account's administrator/manager permissions; changing names updates the linked account's names. The phone key is read-only after creation to preserve account links. Set `User.is_active=False` to revoke access. A superuser using the Mini App needs their numeric Telegram ID linked to their Django `User`.
+Telegram ID в `AdminUser` заполняется автоматически и доступен только для чтения в панели Django. Изменение имени или фамилии синхронизируется с учётной записью. Изменение роли обновляет права связанного сотрудника, если он не суперпользователь. Телефон существующей карточки доступен только для чтения, чтобы сохранить связи. Для отключения доступа установите `User.is_active=False`. Суперпользователю для входа в Mini App нужен числовой Telegram ID в его `User`.
 
-Superusers have view, add, change, and delete permissions throughout Django administration, including workflow records and the cash register. Model validation still applies (one open shift, nonnegative cash, and protected links between historical records). Managers retain their Mini App role restrictions.
+Суперпользователь имеет права просмотра, создания, изменения и удаления записей во всех зарегистрированных разделах Django Admin, включая смены, задачи и кассу. При этом действуют проверки модели: одна активная смена, неотрицательный остаток и защищённые связи исторических записей.
 
-To remove an employee, delete their record under **Пользователи** or **Администраторы**; single and bulk deletion are supported. Deleting a User through Django administration also removes their linked staff card, preventing registration again until a superuser adds a new card. Tokens are revoked, while shifts, tasks, submissions, report photos, expenses, and the cash balance are preserved. Historical names are marked **(удалён)**. If the employee had an open shift, assign it to another administrator under **Смены** before continuing. Tasks whose creator was deleted can still be completed and reviewed by a superuser.
+Удалить сотрудника можно через **«Пользователи»** или **«Администраторы»**, в том числе массово. Удаление `User` через Django Admin также удаляет связанную карточку допуска: сотрудник не сможет зарегистрироваться повторно, пока ему не создадут новую карточку. Токены отзываются, но смены, задачи, выполнения, фотографии, отчёты, расходы и остаток кассы сохраняются. Историческое имя получает отметку **«(удалён)»**. Открытую смену удалённого сотрудника нужно переназначить другому администратору в разделе **«Смены»**. Задачи удалённого постановщика может проверить суперпользователь.
 
-## Shift, task, and cash behavior
+## Правила учёта и хранения данных
 
-- Only one shift can be open. Its administrator chooses day/night at opening, and that stored type is used at closing.
-- Closing requires cash, card, SBP, and the report photos configured by management. Managers and superusers use **Ещё → Фотографии отчёта** to add, name, remove, and mark fields required or optional. The default fields are administrator desk, closing receipt, and an optional additional photo. Each shift saves its photo requirements when it opens; later changes apply to new shifts. Cash means **revenue collected during the shift**. Only that cash revenue increases the register; card and SBP do not.
-- Expenses require a positive amount and description, optionally a receipt photo. They reduce cash and cannot overdraw the register.
-- Managers assign the current shift administrator. Superusers can assign administrators or managers, including personal tasks without an active shift. Superusers cannot receive tasks.
-- Administrators complete tasks during their own shift; managers may complete personal tasks without one. When creating a task, managers and superusers choose an optional photo, one required photo, multiple required photos without named fields, or specific named fields with required/optional choices. Multiple-photo tasks require at least one image and allow up to ten. Django enforces the requirements. Every submission keeps its own evidence; rejected tasks can retain selected photos and replace others without changing older submissions. All submitted photos and their labels are visible during moderation.
-- Submitted tasks remain **На проверке** until the assigning manager or a superuser accepts them. Rejection requires a reason and returns the task for rework. Submission and review history is retained.
-- Shift history, including cash + card + SBP totals, is under **Ещё**. The active shift and cash balance remain visible on the management task screen. Imported reports show their recorded dates without invented shift times.
-- Device lookup uses Telegram's native camera QR scanner. Inventory browsing and staff editing remain available.
-- QR downloads use Telegram's native download dialog (version 8.0+) or an external browser on older clients. Each click creates a fresh link valid for five minutes and limited to one QR PNG; the link contains no API token. The server sends attachment and Telegram Web CORS headers. Inventory APIs still require authentication.
+- Администратор выполняет задачи во время своей смены; управляющий может выполнять личные задачи без открытой смены. Незавершённые задачи сохраняются для дальнейшей работы.
+- Для задачи можно выбрать необязательное фото, одно обязательное фото, несколько обязательных снимков без названий либо именованные поля с отдельной обязательностью. Режим нескольких снимков требует хотя бы одно изображение и допускает до десяти.
+- Каждая отправка задачи сохраняет собственные доказательства выполнения. При доработке можно оставить выбранные фотографии и заменить остальные, не изменяя предыдущую отправку. При отклонении обязателен комментарий о необходимых исправлениях.
+- Управляющий видит задачи, которые поставил или получил сам, и их историю. Суперпользователь видит и проверяет задачи всей команды.
+- Общая выручка смены — сумма наличных, карты и СБП. Касса учитывает только наличные. Расходы списываются из неё и не могут сделать остаток отрицательным.
+- Импортированные отчёты показывают записанную дату без выдуманного времени открытия и закрытия.
+- Фотографии принимаются в JPG, PNG и WebP: до 5 МБ на файл, до десяти изображений и до 15 МБ новых файлов в одной отправке. Доступ к доказательствам выполнения идёт через авторизованные `/api/files/`. nginx блокирует прямой `/media/` и публичный доступ к `/api/bot/`.
+- Денежные операции используют транзакции и ключи повторного запроса, чтобы повторная отправка не создавала двойного списания.
+- Уведомление о выполнении задачи попадает в очередь в той же транзакции. Обработчик повторяет неудачную доставку с увеличением интервала, до десяти попыток. Если Telegram принял сообщение, а обработчик прервался до записи результата, уведомление может прийти повторно; задача и денежная операция при этом не дублируются.
 
-Photos accept validated JPG, PNG, or WebP files up to 5 MB each, at most 10 images and 15 MB of new images per submission. Evidence is served through authenticated `/api/files/` requests. nginx blocks direct `/media/` and public `/api/bot/` access.
-
-Cash commands use transactions and retry keys to avoid duplicate charges. Task submission queues a Telegram notification in the same transaction. The worker retries delivery failures with backoff, up to ten attempts. An interruption after Telegram accepts a message can produce a duplicate notification; it does not duplicate the task submission or cash operation.
-
-Inspect notification failures in Django administration. After fixing chat access or bot configuration, a superuser can retry failed jobs there or run:
+Ошибки отправки видны в Django Admin. После исправления доступа к чату или настроек бота суперпользователь может повторить неудачные уведомления через панель либо командой:
 
 ```sh
 docker compose exec backend python manage.py dispatch_notifications --retry-failed
 ```
 
-## Operations and existing data
+## Обслуживание и резервные копии
 
-Persistent volumes are `postgres_data`, `django_media`, `django_static`, and `frontend_build`. Back up both the database and uploaded media:
+Постоянные данные хранятся в томах `postgres_data`, `django_media`, `django_static` и `frontend_build`. Сохраняйте резервные копии базы и загруженных фотографий. Пример выгрузки базы и команд диагностики:
 
 ```sh
 docker compose exec db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql
@@ -90,15 +211,15 @@ docker compose exec backend python manage.py check
 docker compose logs -f backend scheduler telegram_bot
 ```
 
-`docker compose down` preserves data. `docker compose down -v` deletes the project's volumes.
+`docker compose down` сохраняет данные. Команда `docker compose down -v` удаляет тома проекта.
 
-Existing local SQLite files, backups, and uploaded media are preserved and excluded from images. Compose uses a separate PostgreSQL database. To import old data, stop writes, back up SQLite/media, migrate a backup copy with the updated code, export it with `dumpdata` excluding content types, auth permissions, sessions, and auth tokens, and import into an empty initialized PostgreSQL database with `OWNER_USERNAME=`. Copy uploads into `django_media` with ownership `10001:10001` and verify balances/counts/photos before switching traffic. Financial corrections belong in Django administration, which records an audit log.
+Существующие локальные файлы SQLite, резервные копии и фотографии сохраняются и не включаются в образы. Compose использует отдельную PostgreSQL. Для переноса старых данных остановите запись, сохраните SQLite и фотографии, примените миграции к копии базы, выгрузите данные через `dumpdata`, исключив типы содержимого, права, сессии и токены авторизации. Импортируйте данные в пустую подготовленную PostgreSQL при `OWNER_USERNAME=`. Скопируйте фотографии в `django_media` с владельцем `10001:10001` и проверьте остатки, количество записей и снимки перед переключением пользователей. Финансовые исправления выполняются через Django Admin с записью в журнале действий.
 
-An earlier PostgreSQL 17 deployment's volumes are not automatically reused by this PostgreSQL 16 setup. Use dump/restore and copy media before switching; PostgreSQL 17 data directories cannot be attached directly to PostgreSQL 16.
+Тома старого развёртывания на PostgreSQL 17 автоматически не используются в этой конфигурации с PostgreSQL 16. Перенос выполняется через выгрузку и восстановление данных; каталог PostgreSQL 17 нельзя напрямую подключить к PostgreSQL 16.
 
-## Tests
+## Разработка и проверки
 
-Tests remain in the repository for maintenance and are excluded from production images. Install backend and bot requirements in their own virtual environments and run:
+Тесты остаются в репозитории для сопровождения и исключаются из производственных образов. Установите зависимости сервера и бота в отдельных виртуальных окружениях, затем выполните:
 
 ```sh
 cd backend
@@ -113,6 +234,14 @@ npx playwright install --with-deps chromium
 npm run test:e2e
 ```
 
-The optional `frontend/tests/run-stack.sh` creates a disposable Docker stack with temporary dummy settings outside the repository, seeds test staff, runs the backend and real browser workflow, and removes that test project's containers and volumes. It mounts backend test sources only into the test container. Port 18080 must be free (`SMOKE_GATEWAY_PORT` overrides it). The real bot and notification worker are not started. Concurrency tests run on PostgreSQL and are skipped on SQLite.
+Сценарий `frontend/tests/run-stack.sh` создаёт временное окружение Docker с тестовыми настройками вне репозитория, добавляет вымышленных сотрудников, запускает серверные и браузерные проверки и удаляет контейнеры и тома только этого тестового проекта. Исходники тестов подключаются только в тестовый контейнер. Порт `18080` должен быть свободен; его можно изменить через `SMOKE_GATEWAY_PORT`. Настоящий бот и обработчик уведомлений не запускаются. Проверки одновременных операций выполняются на PostgreSQL и пропускаются на SQLite.
 
-Local Vite development uses `npm run dev` from `frontend` and the root `API_PROXY_TARGET` setting. Authentication uses Telegram, including locally via an HTTPS tunnel. Verify real phone camera permissions and live Telegram delivery against your configured bot and public HTTPS domain.
+Для локальной разработки интерфейса используйте `npm run dev` в `frontend/` и `API_PROXY_TARGET` в корневом `.env`. Vite читает этот же файл; в браузер передаются только переменные с префиксом `VITE_*`, поэтому секреты не должны использовать такой префикс. Авторизация остаётся через Telegram, в том числе при разработке через HTTPS-туннель. Камеру телефона, системный запрос контакта и настоящую доставку уведомлений нужно проверять на реальном устройстве с настроенным ботом и публичным HTTPS-адресом.
+
+## Лицензия и разрешение автора
+
+**Авторское право © 2026 MihaDemon. Все права защищены.**
+
+Проект предоставлен для ознакомления. Личное, коммерческое, некоммерческое, учебное использование, локальный запуск, развёртывание, изменение и распространение оригинальных материалов требуют предварительного письменного разрешения правообладателя. Бесплатность и указание авторства не заменяют разрешение. Для согласования обратитесь к [MihaDemon](https://github.com/MihaDemon). Полные условия находятся в [LICENSE](LICENSE); лицензии сторонних зависимостей сохраняют силу.
+
+Публичный репозиторий GitHub позволяет просмотр и создание форка в пределах условий платформы; это не предоставляет разрешения запускать приложение или использовать его в личных и коммерческих целях. Подробнее — в [документации GitHub о лицензировании репозиториев](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository).
