@@ -1,5 +1,6 @@
 from django.urls import path
 from workflows import views as work
+from api.downloads import download_device_qr
 from rest_framework.routers import DefaultRouter
 
 from api.views import (
@@ -27,6 +28,7 @@ router.register(r'expense-photos', ExpensePhotoViewSet, basename='expensephoto')
 router.register('shifts', work.ShiftViewSet, basename='shift')
 router.register('tasks', work.TaskViewSet, basename='task')
 urlpatterns = [
+    path('device-qr/<str:ticket>/', download_device_qr, name='device-qr-download'),
     path('workspace/', work.workspace),
     path('shift-expenses/', work.expense),
     path('health/', work.health),

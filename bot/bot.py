@@ -1,4 +1,4 @@
-"""Private staff bot: verified contact registration and a Telegram Mini App launch button."""
+"""Launch the Mini App and record contacts requested by its Telegram popup."""
 import asyncio
 import logging
 import os
@@ -9,8 +9,7 @@ from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ChatType
 from aiogram.filters import CommandStart
 from aiogram.types import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup,
-                           KeyboardButton, MenuButtonWebApp, ReplyKeyboardMarkup,
-                           ReplyKeyboardRemove, WebAppInfo)
+                           MenuButtonWebApp, ReplyKeyboardRemove, WebAppInfo)
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
@@ -19,41 +18,38 @@ dp = Dispatcher()
 
 def launch_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text='Open Colizeum Work', web_app=WebAppInfo(url=os.environ['WEBAPP_URL']))
+        InlineKeyboardButton(text='Открыть Colizeum Work', web_app=WebAppInfo(url=os.environ['WEBAPP_URL']))
     ]])
 
 
 @dp.message(CommandStart(), F.chat.type == ChatType.PRIVATE)
 async def start(message: types.Message):
-    await message.answer('Colizeum Work — shifts, tasks, and equipment.\n'
-                         'For first-time registration, verify your own phone number below. Your manager must first add you to the staff list.',
-                         reply_markup=ReplyKeyboardMarkup(keyboard=[[
-                             KeyboardButton(text='Verify my phone number', request_contact=True)
-                         ]], resize_keyboard=True, one_time_keyboard=True))
-    await message.answer('Open your work app:', reply_markup=launch_keyboard())
+    # Remove the old contact keyboard for staff who used the previous bot version.
+    await message.answer('Colizeum Work — смены, задачи и оборудование клуба.',
+                         reply_markup=ReplyKeyboardRemove())
+    await message.answer('Откройте приложение для входа и регистрации:', reply_markup=launch_keyboard())
 
 
 @dp.message(F.contact, F.chat.type == ChatType.PRIVATE)
 async def verify_contact(message: types.Message):
-    if not message.from_user or message.contact.user_id != message.from_user.id:
-        await message.answer('Please use “Verify my phone number” to share your own contact.')
-        return
-    headers = {'X-Bot-Service-Token': os.environ['BOT_SERVICE_TOKEN']}
-    payload = {'telegram_id': str(message.from_user.id), 'phone_number': message.contact.phone_number}
     try:
+        if not message.from_user or message.contact.user_id != message.from_user.id:
+            return
+        headers = {'X-Bot-Service-Token': os.environ['BOT_SERVICE_TOKEN']}
+        payload = {'telegram_id': str(message.from_user.id), 'phone_number': message.contact.phone_number}
         timeout = aiohttp.ClientTimeout(total=15)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(os.getenv('BACKEND_URL', 'http://backend:8000') + '/api/bot/contact/', json=payload, headers=headers) as response:
                 status = response.status
-        if status == 200:
-            await message.answer('Phone verified. Open the app to finish registration.', reply_markup=ReplyKeyboardRemove())
-            await message.answer('Your work app:', reply_markup=launch_keyboard())
-        elif status in (400, 403, 404):
-            await message.answer('Your number is not available for registration. Ask your manager to check the staff list and account link.')
-        else:
-            await message.answer('Verification is temporarily unavailable. Please try again shortly.')
+        if status != 200:
+            logging.warning('Contact confirmation was refused by the backend (HTTP %s).', status)
     except (aiohttp.ClientError, asyncio.TimeoutError):
-        await message.answer('Cannot reach the work app. Please try again shortly.')
+        logging.warning('Cannot reach the backend for contact confirmation.')
+    finally:
+        try:
+            await message.delete()
+        except Exception:
+            logging.warning('Could not delete contact message.')
 
 
 async def main():

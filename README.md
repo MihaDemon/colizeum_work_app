@@ -31,7 +31,7 @@ Use one root `.env` and the single nginx configuration at `infra/nginx.conf`.
 | `backend` | Django/Gunicorn, internal port 8000 |
 | `scheduler` | Deliver queued Telegram task notifications |
 | `frontend` | Publish compiled React assets to the shared volume |
-| `telegram_bot` | Launch the Mini App and verify staff contacts |
+| `telegram_bot` | Launch the Mini App and process contacts requested inside it |
 | `infra` | nginx gateway, bound to localhost only |
 
 `migrate` and `frontend` are one-time jobs; **Exited (0)** is their normal state. The gateway waits for the backend and frontend assets. Rebuild after source changes with `docker compose up -d --build --force-recreate`.
@@ -46,7 +46,7 @@ Set `OWNER_USERNAME`, a strong `OWNER_PASSWORD`, and optionally `OWNER_TELEGRAM_
 docker compose exec backend python manage.py createsuperuser
 ```
 
-Open `/admin/` to manage staff. Add each person's Russian phone number as **10 digits without +7**, their name, and initial role (`admin` or `manager`) to the staff list. The person then sends `/start` to the bot, taps **Verify my phone number**, shares their own contact, and opens the Mini App to register a username with that verified number.
+Open `/admin/` to manage staff. Add each person's Russian phone number as **10 digits without +7**, their name, and initial role (`admin` or `manager`) to the staff list. The person sends `/start` to the bot and opens the Mini App. Existing accounts sign in automatically. New staff enter a username and tap **Подтвердить телефон Telegram** inside the app. Telegram asks permission to share their own contact; the bot records it with Django and removes the contact card from the chat. The app retrieves the confirmed number and enables registration. There is no contact keyboard in the bot and no manual phone entry. Telegram 6.9 or newer is required for this registration popup.
 
 For existing users, Django flags determine the role: `is_superuser` → superuser; otherwise `is_staff` → manager; otherwise administrator. Changing a staff-list initial role does not alter an existing user's permissions. Set `is_active=False` to revoke access. A superuser using the Mini App needs their numeric Telegram ID linked to the Django user.
 
@@ -60,6 +60,7 @@ For existing users, Django flags determine the role: `is_superuser` → superuse
 - Submitted tasks remain **On moderation** until the assigning manager or a superuser accepts them. Rejection requires a reason and returns the task for rework. Submission and review history is retained.
 - Shift history, including cash + card + SBP totals, is under **More**. The active shift and cash balance remain visible on the management task screen. Imported reports show their recorded dates without invented shift times.
 - Device lookup uses Telegram's native camera QR scanner. Inventory browsing and staff editing remain available.
+- QR downloads use Telegram's native download dialog (version 8.0+) or an external browser on older clients. Each click creates a fresh link valid for five minutes and limited to one QR PNG; the link contains no API token. The server sends attachment and Telegram Web CORS headers. Inventory APIs still require authentication.
 
 Photos accept validated JPG, PNG, or WebP files up to 5 MB each. Evidence is served through authenticated `/api/files/` requests. nginx blocks direct `/media/` and public `/api/bot/` access.
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const photo = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8//8/AwMDEwMDAwMDAwAkBgMB/DXemwAAAABJRU5ErkJggg==",
@@ -46,6 +47,7 @@ async function setup(
     theme?: string;
     failure?: boolean;
     noShift?: boolean;
+    contactShared?: boolean;
   } = {},
 ) {
   await page.route("https://telegram.org/**", (route) =>
@@ -53,7 +55,7 @@ async function setup(
   );
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.addInitScript(
-    ({ theme }) => {
+    ({ theme, contactShared }) => {
       const app = {
         initData: "signed-telegram-test-data",
         initDataUnsafe: { user: { id: 42, first_name: "Алексей" } },
@@ -87,10 +89,16 @@ async function setup(
           );
         },
         closeScanQrPopup() {},
+        downloadFile(file: { url: string; file_name: string }) {
+          (window as unknown as { testDownload: typeof file }).testDownload = file;
+        },
+        requestContact(callback: (sent: boolean) => void) {
+          callback(contactShared);
+        },
       };
       Object.defineProperty(window, "Telegram", { value: { WebApp: app } });
     },
-    { theme: options.theme || "dark" },
+    { theme: options.theme || "dark", contactShared: options.contactShared !== false },
   );
   await page.route("**/media/**", (route) =>
     route.fulfill({ contentType: "image/png", body: photo }),
@@ -98,9 +106,19 @@ async function setup(
   let active = !options.noShift;
   let balance = 1000;
   let taskStatus = "active";
+  let contactChecks = 0;
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
+    if (path.startsWith("/api/device-qr/")) {
+      expect(route.request().headers().authorization).toBeUndefined();
+      return route.fulfill({ contentType: "image/png", headers: { "Content-Disposition": 'attachment; filename="station-1-qr.png"' }, body: photo });
+    }
+    if (path.endsWith("/telegram/contact-status/")) {
+      expect(route.request().postDataJSON()).toEqual({ initData: "signed-telegram-test-data" });
+      contactChecks += 1;
+      return route.fulfill({ json: contactChecks > 1 ? { verified: true, phone_number: "9991234567" } : { verified: false } });
+    }
     if (path.endsWith("/telegram/telegram/")) {
       const data = route.request().postDataJSON();
       if (options.newUser && !data.username)
@@ -115,6 +133,8 @@ async function setup(
         json: { ...user, is_staff: Boolean(options.staff) },
       });
     expect(route.request().headers().authorization).toBe("Token valid-token");
+    if (path.endsWith("/qr-download/"))
+      return route.fulfill({ json: { url: "https://work.example.invalid/api/device-qr/test-ticket/", file_name: "station-1-qr.png" } });
     if (path.endsWith("/workspace/"))
       return route.fulfill({
         status: options.failure ? 500 : 200,
@@ -201,7 +221,7 @@ async function setup(
 
 test("Telegram login opens the live Mini App without sample accounts", async ({
   page,
-}) => {
+}, info) => {
   await setup(page);
   await page.goto("/");
   await expect(
@@ -215,9 +235,12 @@ test("Telegram login opens the live Mini App without sample accounts", async ({
   await expect(
     page.getByRole("heading", { name: /Night shift/ }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await expect(page.locator(".cp-profile")).toHaveText("Алексей Смирнов");
+  await expect(page.locator(".cp-avatar")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("name-header.png"), fullPage: true });
+  await page.locator(".cp-profile").click();
   await expect(
-    page.getByText("Алексей Смирнов", { exact: true }),
+    page.locator(".cp-account").getByText("Алексей Смирнов", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Preview settings", { exact: true })).toHaveCount(
     0,
@@ -230,6 +253,64 @@ test("Telegram login opens the live Mini App without sample accounts", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("new staff confirm their phone in the Mini App and register a username", async ({ page }, info) => {
+  await setup(page, { newUser: true });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Регистрация сотрудника" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Начать работу" })).toBeDisabled();
+  await expect(page.getByLabel("Номер телефона", { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("registration.png"), fullPage: true });
+  await page.getByLabel("Логин", { exact: true }).fill("new_staff");
+  await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
+  const phone = page.getByLabel("Номер телефона", { exact: true });
+  await expect(phone).toHaveValue("9991234567");
+  await expect(phone).toHaveAttribute("readonly", "");
+  const sent = page.waitForRequest((r) => r.url().endsWith("/telegram/telegram/") && Boolean(r.postDataJSON().username));
+  await page.getByRole("button", { name: "Начать работу" }).click();
+  expect((await sent).postDataJSON()).toEqual({ initData: "signed-telegram-test-data", username: "new_staff", phone_number: "9991234567" });
+  await expect(page.getByRole("heading", { name: "Current shift" })).toBeVisible();
+});
+
+test("cancelled contact sharing keeps registration disabled and allows retry", async ({ page }) => {
+  await setup(page, { newUser: true, contactShared: false });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Вы не поделились номером");
+  await expect(page.getByRole("button", { name: "Начать работу" })).toBeDisabled();
+  await page.evaluate(() => {
+    window.Telegram!.WebApp.requestContact = (callback) => callback(true);
+  });
+  await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Начать работу" })).toBeEnabled();
+});
+
+test("equipment categories, rows and details use their matching device icons", async ({ page }, info) => {
+  await setup(page);
+  const categories = [
+    ["stations", "Места", "devices-pc"],
+    ["pcs", "ПК", "cpu"],
+    ["mice", "Мыши", "mouse"],
+    ["keyboards", "Клавиатуры", "keyboard"],
+    ["headsets", "Наушники", "headphones"],
+    ["monitors", "Мониторы", "device-desktop"],
+    ["playstations", "PlayStation", "device-gamepad-2"],
+  ];
+  await page.route(/\/api\/(pcs|mice|keyboards|headsets|monitors|playstations)\/$/, (route) => route.fulfill({ json: [{ id: 1, model: "Test device", serial_number: "SN-1" }] }));
+  await page.goto("/");
+  await page.getByRole("navigation").getByRole("button", { name: "Devices", exact: true }).click();
+  for (const [resource, title, icon] of categories) {
+    const tab = page.locator(".resource-tabs").getByRole("button", { name: title, exact: true });
+    await expect(tab.locator(`.tabler-icon-${icon}`)).toHaveCount(1);
+    await tab.click();
+    const row = page.locator(resource === "stations" ? ".station-tile" : ".equipment-row").first();
+    await expect(row.locator(`.tabler-icon-${icon}`)).toHaveCount(1);
+    await row.click();
+    await expect(page.locator(`h1 .tabler-icon-${icon}`)).toBeVisible();
+    await page.getByRole("button", { name: "Назад", exact: true }).click();
+  }
+  await page.screenshot({ path: info.outputPath("device-icons.png"), fullPage: true });
 });
 
 test("shift opening and closing use real endpoints and fixed opening type", async ({
@@ -387,7 +468,49 @@ test("regular users can scan and download QR labels without equipment write cont
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Изменить" })).toHaveCount(0);
   await page.getByRole("button", { name: "Показать QR-код" }).click();
-  await expect(page.getByRole("link", { name: "Скачать PNG" })).toBeVisible();
+  await page.getByRole("button", { name: "Скачать PNG" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { testDownload?: { url: string; file_name: string } }).testDownload)).toEqual({
+    url: "https://work.example.invalid/api/device-qr/test-ticket/", file_name: "station-1-qr.png",
+  });
+});
+
+test("QR browser fallback saves a real PNG attachment without an API token", async ({ page }) => {
+  await setup(page);
+  await page.goto("/");
+  await page.getByRole("navigation").getByRole("button", { name: "Devices", exact: true }).click();
+  await page.getByRole("button", { name: "Сканировать QR" }).click();
+  await page.getByRole("button", { name: "Показать QR-код" }).click();
+  await page.evaluate(() => {
+    window.Telegram!.WebApp.downloadFile = undefined;
+    window.Telegram!.WebApp.openLink = undefined;
+  });
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Скачать PNG" }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe("station-1-qr.png");
+  expect(await download.failure()).toBeNull();
+  expect(await readFile((await download.path())!)).toEqual(photo);
+});
+
+test("a failed QR download offers retry and keeps the device preview", async ({ page }) => {
+  await setup(page);
+  let attempts = 0;
+  await page.route("**/api/stations/1/qr-download/", (route) => {
+    attempts += 1;
+    return attempts === 1
+      ? route.fulfill({ status: 503, json: { detail: "Скачивание временно недоступно" } })
+      : route.fallback();
+  });
+  await page.goto("/");
+  await page.getByRole("navigation").getByRole("button", { name: "Devices", exact: true }).click();
+  await page.getByRole("button", { name: "Сканировать QR" }).click();
+  await page.getByRole("button", { name: "Показать QR-код" }).click();
+  await page.getByRole("button", { name: "Скачать PNG" }).click();
+  await expect(page.getByRole("alert")).toContainText("Скачивание временно недоступно");
+  await expect(page.getByRole("img", { name: "QR-код: Место 12" })).toBeVisible();
+  await page.getByRole("button", { name: "Скачать PNG" }).click();
+  await expect.poll(() => attempts).toBe(2);
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 test("staff users can create equipment and light theme respects viewport", async ({
   page,
