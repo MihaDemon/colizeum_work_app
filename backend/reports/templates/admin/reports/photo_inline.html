@@ -37,6 +37,13 @@
             {% endif %}
           </div>
           {{ inline_admin_form.form.non_field_errors }}
+          {% if inline_admin_form.form.label %}
+            <div class="form-row field-label">
+              {{ inline_admin_form.form.label.label_tag }}
+              {{ inline_admin_form.form.label.errors }}
+              {{ inline_admin_form.form.label }}
+            </div>
+          {% endif %}
           <div class="reports-photo-upload field-image">
             {% if inline_admin_formset.has_change_permission or not inline_admin_form.original and inline_admin_formset.has_add_permission %}
               {{ inline_admin_form.form.image.label_tag }}

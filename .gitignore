@@ -1,0 +1,18 @@
+.env
+
+__pycache__/
+*.pyc
+venv/
+
+db.*
+
+backend/media/
+
+# Deployment credentials and generated artifacts
+certs/
+legacy-data.json
+backend/staticfiles/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/

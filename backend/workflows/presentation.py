@@ -1,0 +1,94 @@
+from django.contrib.auth import get_user_model
+from django.db.models import Q
+from reports.models import CashRegister, Expenses, Report
+from .models import Activity, Shift, Task
+from .permissions import person, visible_tasks
+
+
+def file_url(kind, pk):
+    return f'/api/files/{kind}/{pk}/'
+
+
+def iso(value):
+    return value.isoformat() if value else None
+
+
+def task_data(task):
+    submission = next(iter(task.submissions.all()), None)
+    return {
+        'id': str(task.pk), 'title': task.title, 'description': task.description,
+        'managerId': str(task.creator_id), 'adminId': str(task.assignee_id),
+        'shiftId': str(task.shift_id) if task.shift_id else None,
+        'priority': task.priority, 'requiresPhoto': task.requires_photo,
+        'referencePhoto': file_url('reference', task.pk) if task.reference_photo else None,
+        'status': task.status, 'submissionVersion': task.submission_version, 'photo': file_url('submission', submission.pk) if submission and submission.photo else None,
+        'photoName': 'Completion photo' if submission and submission.photo else None,
+        'note': submission.note if submission else '', 'rejectionReason': task.rejection_reason,
+        'createdAt': iso(task.created_at), 'submittedAt': iso(task.submitted_at), 'acceptedAt': iso(task.accepted_at),
+    }
+
+
+def shift_data(shift):
+    report = shift.report
+    return {
+        'id': str(shift.pk), 'adminId': str(shift.admin_id), 'type': shift.shift_type,
+        'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
+        **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
+            'total': str(report.cash + report.cards + report.spb),
+            'photos': {p.label or f'Photo {p.pk}': file_url('report', p.pk) for p in report.photos.all()}} if report else {}),
+    }
+
+
+def workspace_data(user):
+    tasks = visible_tasks(user, Task.objects.select_related('creator', 'assignee').prefetch_related('submissions'))
+    shifts = Shift.objects.select_related('report').prefetch_related('report__photos')
+    current = shifts.filter(closed_at__isnull=True).first()
+    history = shifts.filter(closed_at__isnull=False)
+    expenses = Expenses.objects.select_related('work_shift_expense').prefetch_related('photos').order_by('-date')
+    activity = Activity.objects.select_related('task')
+    if not user.is_staff and not user.is_superuser:
+        history = history.filter(admin=user)
+        expenses = expenses.filter(admin=user)
+        activity = activity.filter(Q(actor=user) | Q(task__assignee=user))
+    elif not user.is_superuser:
+        activity = activity.filter(Q(actor=user) | Q(task__creator=user) | Q(task__assignee=user) | Q(task__isnull=True))
+    people_ids = {user.pk}
+    if current:
+        people_ids.add(current.admin_id)
+    task_list, history_list, expense_list = list(tasks), list(history), list(expenses)
+    for task in task_list:
+        people_ids.update([task.creator_id, task.assignee_id])
+    people_ids.update(s.admin_id for s in history_list)
+    people_ids.update(e.admin_id for e in expense_list if e.admin_id)
+    legacy_reports = Report.objects.filter(work_shift__isnull=True).select_related('admin').prefetch_related('photos').order_by('-date', '-pk')
+    if not user.is_staff and not user.is_superuser:
+        legacy_reports = legacy_reports.filter(admin=user)
+    legacy_reports = list(legacy_reports)
+    people_ids.update(r.admin_id for r in legacy_reports if r.admin_id)
+    people = get_user_model().objects.select_related('phone_number').filter(Q(pk__in=people_ids) | (Q(is_active=True) if user.is_superuser else Q(pk=user.pk)))
+    legacy = [{
+        'id': f'legacy-{r.pk}', 'adminId': str(r.admin_id) if r.admin_id else '', 'type': r.shift,
+        # A date anchor is only used to format the date; the UI does not invent shift times.
+        'openedAt': f'{r.date.isoformat()}T12:00:00+03:00', 'legacy': True,
+        'cash': float(r.cash), 'cards': float(r.cards), 'sbp': float(r.spb),
+        'total': str(r.cash + r.cards + r.spb),
+        'photos': {p.label or f'Photo {p.pk}': file_url('report', p.pk) for p in r.photos.all()},
+    } for r in legacy_reports]
+    balance = CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0
+    return {
+        'user': person(user), 'people': [person(p) for p in people],
+        'state': {
+            'shift': shift_data(current) if current else None,
+            'shifts': sorted([shift_data(s) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],
+            'expenses': [{
+                'id': str(e.pk), 'adminId': str(e.admin_id) if e.admin_id else '',
+                'shiftId': str(e.work_shift_expense.shift_id) if hasattr(e, 'work_shift_expense') else None,
+                'amount': float(e.amount), 'description': e.info, 'createdAt': iso(e.date),
+                'photo': file_url('expense', e.photos.all()[0].pk) if e.photos.all() else None,
+            } for e in expense_list],
+            'balance': float(balance),
+            'activity': [{'id': str(a.pk), 'title': a.title, 'description': a.description, 'time': iso(a.created_at),
+                          'kind': a.kind, 'actorId': str(a.actor_id),
+                          'managerId': str(a.task.creator_id) if a.task_id else None, 'recipientId': str(a.task.assignee_id) if a.task_id else None} for a in activity[:200]],
+        },
+    }

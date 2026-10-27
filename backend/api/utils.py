@@ -1,34 +1,25 @@
 import hashlib
 import hmac
+import time
 from urllib.parse import parse_qsl
+from django.conf import settings
 
 
 def validate_telegram_data(init_data: str, bot_token: str) -> bool:
-    """
-    Validates the Telegram WebApp initData string using HMAC-SHA-256.
-    """
-    # Parse the query string into a dictionary
-    parsed_data = dict(parse_qsl(init_data))
-
-    # Extract the hash and remove it from the dictionary
-    received_hash = parsed_data.pop('hash', None)
-    if not received_hash:
+    if not isinstance(init_data, str) or not bot_token or len(init_data) > 16384:
         return False
-
-    # Sort the remaining key-value pairs alphabetically by key
-    data_check_string = '\n'.join(
-        f"{k}={v}" for k, v in sorted(parsed_data.items())
-    )
-
-    # Generate the secret key (HMAC of bot token using 'WebAppData' as the key)
-    secret_key = hmac.new(
-        b"WebAppData", bot_token.encode(), hashlib.sha256
-    ).digest()
-
-    # Calculate the final hash
-    calculated_hash = hmac.new(
-        secret_key, data_check_string.encode(), hashlib.sha256
-    ).hexdigest()
-
-    # Compare securely
-    return hmac.compare_digest(calculated_hash, received_hash)
+    try:
+        pairs = parse_qsl(init_data, strict_parsing=True)
+        parsed = dict(pairs)
+        if len(pairs) != len(parsed):
+            return False
+        received = parsed.pop('hash', '')
+        age = time.time() - int(parsed['auth_date'])
+        if age < -60 or age > settings.TELEGRAM_INIT_DATA_MAX_AGE:
+            return False
+        check = '\n'.join(f'{k}={v}' for k, v in sorted(parsed.items()))
+        secret = hmac.new(b'WebAppData', bot_token.encode(), hashlib.sha256).digest()
+        expected = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, received)
+    except (ValueError, TypeError, KeyError, UnicodeError):
+        return False

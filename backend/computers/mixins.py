@@ -8,7 +8,7 @@ from computers.constraints import (
 class DeviceBaseModelMixin(models.Model):
     model = models.CharField(
         verbose_name='Модель',
-        unique=True,
+        unique=False,
         blank=False,
         max_length=MODEL_MAX_LENGTH
     )

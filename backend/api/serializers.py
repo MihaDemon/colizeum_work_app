@@ -7,21 +7,30 @@ from api.mixins import DeviceSerializerMixin, QRCodeSerializerMixin
 from computers.models import (
     Mouse, Keyboard, Monitor, Headset, PC, Station, PlayStation
 )
-from reports.models import ExpensePhoto, Expenses, Report, ReportPhoto
+from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
 
 User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
+    role = serializers.SerializerMethodField()
+
+    def get_role(self, user):
+        from workflows.permissions import role
+        return role(user)
+
+    first_name = serializers.CharField(source='phone_number.first_name', read_only=True, default='')
+    last_name = serializers.CharField(source='phone_number.last_name', read_only=True, default='')
+    phone_number = serializers.CharField(source='phone_number_id', read_only=True, allow_null=True)
+
     class Meta:
         model = User
         fields = (
             'username',
-            'phone_number__first_name',
-            'phone_number__last_name',
+            'id', 'phone_number', 'first_name', 'last_name',
             'last_login',
             'is_active',
-            'is_staff',
+            'is_staff', 'is_superuser', 'role',
         )
         read_only_fields = fields
 
@@ -95,6 +104,11 @@ class PlayStationSerializer(QRCodeSerializerMixin):
 
 
 class ReportPhotoSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['image'] = f'/api/files/report/{instance.pk}/'
+        return data
+
     class Meta:
         model = ReportPhoto
         fields = ('id', 'report', 'image')
@@ -106,6 +120,11 @@ class ReportPhotoSerializer(serializers.ModelSerializer):
 
 
 class ExpensePhotoSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['image'] = f'/api/files/expense/{instance.pk}/'
+        return data
+
     class Meta:
         model = ExpensePhoto
         fields = ('id', 'expense', 'image')
@@ -149,9 +168,9 @@ class ReportSerializer(FinancialRecordSerializer):
         model = Report
         fields = (
             'id', 'shift', 'date', 'admin', 'cards', 'spb', 'cash',
-            'remaining_cash', 'encashment', 'info', 'photos', 'uploaded_photos',
+            'info', 'photos', 'uploaded_photos',
         )
-        read_only_fields = ('id', 'date', 'admin', 'photos')
+        read_only_fields = ('id', 'admin', 'photos')
 
     def validate(self, attrs):
         has_existing_photos = self.instance and self.instance.photos.exists()
@@ -164,10 +183,19 @@ class ReportSerializer(FinancialRecordSerializer):
 
 class ExpensesSerializer(FinancialRecordSerializer):
     photos = ExpensePhotoSerializer(many=True, read_only=True)
+    # HTML/multipart omissions otherwise default a BooleanField to False in DRF.
+    from_register = serializers.BooleanField(default=True)
     photo_model = ExpensePhoto
     photo_parent_field = 'expense'
 
     class Meta:
         model = Expenses
-        fields = ('id', 'date', 'admin', 'amount', 'info', 'photos', 'uploaded_photos')
+        fields = ('id', 'date', 'admin', 'amount', 'from_register', 'info', 'photos', 'uploaded_photos')
         read_only_fields = ('id', 'date', 'admin', 'photos')
+
+
+class CashRegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CashRegister
+        fields = ('id', 'balance')
+        read_only_fields = fields

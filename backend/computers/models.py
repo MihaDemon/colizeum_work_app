@@ -83,31 +83,31 @@ class Station(models.Model):
         unique=True,
         blank=False,
     )
-    mouse = models.ForeignKey(
+    mouse = models.OneToOneField(
         'Mouse',
         on_delete=models.SET_NULL,
         blank=True,
         null=True
     )
-    keyboard = models.ForeignKey(
+    keyboard = models.OneToOneField(
         'Keyboard',
         on_delete=models.SET_NULL,
         blank=True,
         null=True
     )
-    headset = models.ForeignKey(
+    headset = models.OneToOneField(
         'Headset',
         on_delete=models.SET_NULL,
         blank=True,
         null=True
     )
-    monitor = models.ForeignKey(
+    monitor = models.OneToOneField(
         'Monitor',
         on_delete=models.SET_NULL,
         blank=True,
         null=True
     )
-    pc = models.ForeignKey(
+    pc = models.OneToOneField(
         'PC',
         on_delete=models.SET_NULL,
         blank=True,
