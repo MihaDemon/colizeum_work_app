@@ -4,9 +4,16 @@ import uuid
 from django.conf import settings
 from django.db import models
 from django.db.models import Q, Value
+from .photos import default_report_fields
+
+
+class PhotoSettings(models.Model):
+    report_fields = models.JSONField(default=default_report_fields)
+    version = models.PositiveIntegerField(default=1)
 
 
 class Shift(models.Model):
+    photo_requirements = models.JSONField(default=default_report_fields)
     admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     shift_type = models.CharField(max_length=5, choices=[('day', 'Day'), ('night', 'Night')])
     opened_at = models.DateTimeField(auto_now_add=True)
@@ -36,6 +43,8 @@ class Task(models.Model):
     description = models.TextField(blank=True)
     priority = models.CharField(max_length=6, choices=[('normal', 'Normal'), ('high', 'High'), ('low', 'Low')], default='normal')
     requires_photo = models.BooleanField(default=False)
+    photo_mode = models.CharField(max_length=8, choices=[('optional', 'Optional photo'), ('single', 'One photo'), ('multiple', 'Multiple photos'), ('named', 'Named photos')], default='optional')
+    photo_requirements = models.JSONField(default=list)
     reference_photo = EvidenceImageField(upload_to='tasks/reference/%Y/%m/', blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE)
     submission_version = models.PositiveIntegerField(default=0)
@@ -64,6 +73,16 @@ class TaskSubmission(models.Model):
     class Meta:
         ordering = ['-version']
         constraints = [models.UniqueConstraint(fields=['task', 'version'], name='unique_task_submission_version')]
+
+
+class TaskSubmissionPhoto(models.Model):
+    submission = models.ForeignKey(TaskSubmission, on_delete=models.PROTECT, related_name='photos')
+    image = EvidenceImageField(upload_to='tasks/completion/%Y/%m/')
+    slot = models.CharField(max_length=64, blank=True)
+    label = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ['pk']
 
 
 class ShiftExpense(models.Model):

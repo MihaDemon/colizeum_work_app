@@ -1,5 +1,27 @@
 export type Role = "admin" | "manager" | "superuser";
 
+export interface PhotoRequirement {
+  id: string;
+  label: string;
+  required: boolean;
+}
+export type PhotoMode = "optional" | "single" | "multiple" | "named";
+export interface EvidencePhoto {
+  id?: string;
+  slot: string;
+  label: string;
+  url: string;
+}
+export interface PhotoSettings {
+  reportFields: PhotoRequirement[];
+  version: number;
+}
+export const defaultReportPhotoFields: PhotoRequirement[] = [
+  { id: "desk", label: "Administrator desk", required: true },
+  { id: "receipt", label: "Closing receipt", required: true },
+  { id: "additional", label: "Additional photo", required: false },
+];
+
 export interface StaffMember {
   id: string;
   name: string;
@@ -18,6 +40,9 @@ export interface Task {
   shiftId?: string;
   priority: "high" | "normal" | "low";
   requiresPhoto: boolean;
+  photoMode?: PhotoMode;
+  photoRequirements?: PhotoRequirement[];
+  photos?: EvidencePhoto[];
   referencePhoto?: string;
   status: "active" | "moderation" | "accepted" | "rejected";
   photo?: string;
@@ -30,6 +55,7 @@ export interface Task {
 }
 
 export interface Shift {
+  photoRequirements?: PhotoRequirement[];
   legacy?: boolean;
   id: string;
   adminId: string;
@@ -64,6 +90,7 @@ export interface Activity {
 }
 
 export interface State {
+  photoSettings?: PhotoSettings;
   shift: Shift | null;
   shifts: Shift[];
   tasks: Task[];
@@ -75,7 +102,11 @@ export interface State {
 export type NewTask = Pick<
   Task,
   "title" | "description" | "adminId" | "priority" | "requiresPhoto"
-> & { referencePhoto?: string };
+> & {
+  referencePhoto?: string;
+  photoMode?: PhotoMode;
+  photoRequirements?: PhotoRequirement[];
+};
 
 export type Action =
   | { type: "OPEN_SHIFT"; actorId: string; shiftType: "day" | "night" }
@@ -85,7 +116,7 @@ export type Action =
       cash: number;
       cards: number;
       sbp: number;
-      photos: Record<string, string>;
+      photos: EvidencePhoto[];
     }
   | {
       type: "ADD_EXPENSE";
@@ -101,6 +132,7 @@ export type Action =
       taskId: string;
       photo?: string;
       photoName?: string;
+      photos?: EvidencePhoto[];
       note?: string;
     }
   | {
@@ -110,9 +142,42 @@ export type Action =
       accept: boolean;
       version?: number;
       reason?: string;
+    }
+  | {
+      type: "SAVE_PHOTO_SETTINGS";
+      actorId: string;
+      version: number;
+      fields: PhotoRequirement[];
     };
 
-export const requiredPhotoSlots = ["Administrator desk", "Closing receipt"];
+export function photoFieldsError(fields: PhotoRequirement[]): string {
+  if (fields.length > 10) return "Use at most 10 photo fields.";
+  if (fields.some((field) => !field.label.trim()))
+    return "Name every photo field.";
+  const names = fields.map((field) => field.label.trim().toLowerCase());
+  if (new Set(names).size !== names.length)
+    return "Use a different name for each photo field.";
+  return "";
+}
+
+export function photoEvidenceError(
+  mode: PhotoMode,
+  fields: PhotoRequirement[],
+  photos: EvidencePhoto[],
+): string {
+  if (photos.length > 10) return "Attach at most 10 photos.";
+  if ((mode === "single" || mode === "multiple") && !photos.length)
+    return "Add the required completion photo before closing this task.";
+  if (mode === "named") {
+    const missing = fields.filter(
+      (field) =>
+        field.required && !photos.some((photo) => photo.slot === field.id),
+    );
+    if (missing.length)
+      return `Add the required photos: ${missing.map((field) => field.label).join(", ")}.`;
+  }
+  return "";
+}
 
 export function visibleTasks(state: State, persona: StaffMember): Task[] {
   if (persona.role === "superuser") return state.tasks;

@@ -92,6 +92,26 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
   const manager = await session(browser, 91002);
   const owner = await session(browser, 91003);
   try {
+    await manager.page
+      .getByRole("button", { name: "More", exact: true })
+      .click();
+    await manager.page
+      .getByRole("button", { name: "Report photos", exact: true })
+      .click();
+    await manager.page
+      .getByLabel("Photo name 1", { exact: true })
+      .fill("Front desk");
+    await manager.page
+      .getByLabel("Photo name 3", { exact: true })
+      .fill("Gaming hall");
+    await manager.page.getByLabel("Required photo 3", { exact: true }).check();
+    await manager.page
+      .getByRole("button", { name: "Save photo requirements", exact: true })
+      .click();
+    await expect(manager.page.getByRole("status")).toContainText(
+      "Report photo requirements saved",
+    );
+    await admin.page.reload();
     await admin.page
       .getByRole("button", { name: "Open shift", exact: true })
       .click();
@@ -112,7 +132,20 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     await manager.page
       .getByLabel("Task instructions", { exact: true })
       .fill("Clean desk and attach proof");
-    await manager.page.getByRole("checkbox").check();
+    await manager.page
+      .getByLabel("Task photo requirements", { exact: true })
+      .selectOption("named");
+    for (const [index, label] of [
+      "Before cleaning",
+      "After cleaning",
+    ].entries()) {
+      await manager.page
+        .getByRole("button", { name: "Add photo field", exact: true })
+        .click();
+      await manager.page
+        .getByLabel(`Photo name ${index + 1}`, { exact: true })
+        .fill(label);
+    }
     await manager.page
       .getByRole("button", { name: "Assign task", exact: true })
       .click();
@@ -121,7 +154,8 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     ).toBeVisible();
     await admin.page.reload();
     await task(admin.page, "Stack clean desk");
-    await evidence(admin.page, "Completion photo");
+    await evidence(admin.page, "Before cleaning");
+    await evidence(admin.page, "After cleaning");
     await admin.page
       .getByRole("button", { name: "Close task", exact: true })
       .click();
@@ -134,7 +168,10 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
       .click();
     await task(manager.page, "Stack clean desk");
     await expect(
-      manager.page.getByRole("img", { name: "Task completion evidence" }),
+      manager.page.getByRole("img", { name: "Before cleaning", exact: true }),
+    ).toBeVisible();
+    await expect(
+      manager.page.getByRole("img", { name: "After cleaning", exact: true }),
     ).toBeVisible();
     await manager.page
       .getByRole("button", { name: "Reject task", exact: true })
@@ -190,8 +227,9 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     await admin.page.getByLabel("Cash total", { exact: true }).fill("100");
     await admin.page.getByLabel("Card total", { exact: true }).fill("200");
     await admin.page.getByLabel("SBP total", { exact: true }).fill("300");
-    await evidence(admin.page, "Administrator desk");
+    await evidence(admin.page, "Front desk");
     await evidence(admin.page, "Closing receipt");
+    await evidence(admin.page, "Gaming hall");
     await admin.page
       .getByRole("button", { name: "Close shift", exact: true })
       .click();

@@ -78,5 +78,5 @@ export default function App() {
         authenticate={authenticate}
       />
     );
-  return <LiveWorkspace account={user} logout={reset} />;
+  return <LiveWorkspace account={user} />;
 }

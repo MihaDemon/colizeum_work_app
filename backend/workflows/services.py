@@ -4,8 +4,9 @@ from django.utils import timezone
 from rest_framework.exceptions import APIException, PermissionDenied
 
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
-from .models import Activity, Shift, ShiftExpense, Task, TaskSubmission, TelegramNotification
+from .models import Activity, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 from .permissions import role
+from .photos import uploaded_photos, validate_photos
 
 
 class Conflict(APIException):
@@ -38,7 +39,8 @@ def open_shift(user, data):
         raise PermissionDenied('Only administrators can open shifts.')
     if Shift.objects.filter(closed_at__isnull=True).exists():
         raise Conflict('The previous shift is still open.')
-    shift = Shift.objects.create(admin=user, **data)
+    settings, _ = PhotoSettings.objects.get_or_create(pk=1)
+    shift = Shift.objects.create(admin=user, photo_requirements=settings.report_fields, **data)
     event(user, 'Shift opened', shift.get_shift_type_display())
     return shift
 
@@ -49,13 +51,18 @@ def close_shift(user, pk, data):
     shift = own_shift(user)
     if str(shift.pk) != str(pk):
         raise Conflict('This is no longer your active shift.')
+    photos = uploaded_photos(data, [
+        ('desk_photo', 'desk', 'Administrator desk'),
+        ('receipt_photo', 'receipt', 'Closing receipt'),
+        ('additional_photo', 'additional', 'Additional photo'),
+    ])
+    validate_photos(photos, 'named', shift.photo_requirements)
     report = Report.objects.create(
         admin=user, shift=shift.shift_type, date=timezone.localdate(),
         cash=data['cash'], cards=data['cards'], spb=data['sbp'],
     )
-    for field, label in [('desk_photo', 'Administrator desk'), ('receipt_photo', 'Closing receipt'), ('additional_photo', 'Additional photo')]:
-        if data.get(field):
-            ReportPhoto.objects.create(report=report, image=data[field], label=label)
+    for item in photos:
+        ReportPhoto.objects.create(report=report, image=item['image'], label=item['label'])
     shift.report = report
     shift.closed_at = timezone.now()
     shift.save(update_fields=['report', 'closed_at'])
@@ -108,11 +115,32 @@ def submit_task(user, pk, data):
     if task.status not in [Task.Status.ACTIVE, Task.Status.REJECTED]:
         raise Conflict('This task has already been submitted.')
     previous = task.submissions.first()
-    photo = data.get('photo') or (previous.photo.name if previous and previous.photo else '')
-    if task.requires_photo and not photo:
+    photos = uploaded_photos(data, [('photo', '', 'Completion photo')])
+    if data.get('photo'):
+        photos[-1]['legacy'] = True
+    available = {}
+    if previous:
+        if previous.photo:
+            available[f'legacy-{previous.pk}'] = {'image': previous.photo.name, 'slot': '', 'label': 'Completion photo', 'legacy': True}
+        for image in previous.photos.all():
+            available[str(image.pk)] = {'image': image.image.name, 'slot': image.slot, 'label': image.label}
+    retained = data.get('retained_photos')
+    if retained is None:
+        retained = list(available) if not photos else []
+    if any(pk not in available for pk in retained):
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({'retained_photos': 'Only photos from your latest submission can be retained.'})
+    photos.extend(dict(available[pk]) for pk in retained)
+    if task.requires_photo and not photos:
         raise Conflict('A completion photo is required.')
+    mode = 'single' if task.requires_photo and task.photo_mode == 'optional' else task.photo_mode
+    validate_photos(photos, mode, task.photo_requirements)
     task.submission_version += 1
-    submission = TaskSubmission.objects.create(task=task, version=task.submission_version, submitted_by=user, photo=photo, note=data['note'])
+    legacy_photo = photos[0]['image'] if len(photos) == 1 and photos[0].get('legacy') else ''
+    submission = TaskSubmission.objects.create(task=task, version=task.submission_version, submitted_by=user, photo=legacy_photo, note=data['note'])
+    if not legacy_photo:
+        for item in photos:
+            TaskSubmissionPhoto.objects.create(submission=submission, image=item['image'], slot=item['slot'], label=item['label'])
     task.status = Task.Status.MODERATION
     task.submitted_at = timezone.now()
     task.rejection_reason = ''
@@ -120,6 +148,21 @@ def submit_task(user, pk, data):
     TelegramNotification.objects.create(submission=submission, recipient=task.creator, next_attempt_at=timezone.now())
     event(user, 'Task on moderation', task.title, kind='task', task=task)
     return task
+
+
+@transaction.atomic
+def save_photo_settings(user, data):
+    if role(user) not in ['manager', 'superuser']:
+        raise PermissionDenied('Only managers and superusers can configure report photos.')
+    lock_register()
+    settings, _ = PhotoSettings.objects.get_or_create(pk=1)
+    if data['version'] != settings.version:
+        raise Conflict('Photo settings changed. Reopen settings and try again.')
+    settings.report_fields = data['report_fields']
+    settings.version += 1
+    settings.save(update_fields=['report_fields', 'version'])
+    event(user, 'Report photo requirements updated', 'Applies to shifts opened from now on.')
+    return settings
 
 
 @transaction.atomic

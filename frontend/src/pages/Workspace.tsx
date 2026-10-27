@@ -31,7 +31,6 @@ import {
   IconRefresh,
   IconShieldCheck,
   IconSun,
-  IconUpload,
   IconWallet,
   IconX,
   IconLock,
@@ -40,10 +39,21 @@ import {
 } from "@tabler/icons-react";
 import { Equipment } from "../pages/Equipment";
 import { PrivateImage } from "../components/PrivateImage";
+import Upload from "../components/PhotoUpload";
+import {
+  EvidenceUploads,
+  PhotoFieldsEditor,
+  PhotoSettingsPage,
+} from "../components/PhotoFields";
 import type { User } from "../lib/types";
 import {
   visibleTasks,
-  requiredPhotoSlots,
+  defaultReportPhotoFields,
+  photoEvidenceError,
+  photoFieldsError,
+  type EvidencePhoto,
+  type PhotoMode,
+  type PhotoRequirement,
   type StaffMember,
   type Action,
   type State,
@@ -66,6 +76,7 @@ type View =
   | "history"
   | "devices"
   | "notifications"
+  | "photo-settings"
   | "more";
 type Form = "expense" | "close" | "open" | "create" | null;
 const People = createContext<StaffMember[]>([]);
@@ -90,7 +101,6 @@ export interface WorkspaceProps {
   busy: boolean;
   error: string;
   perform: (action: Action) => Promise<void>;
-  logout: () => void;
 }
 function Status({ status }: { status: Task["status"] }) {
   return (
@@ -130,79 +140,6 @@ function Empty({
       <p>{text}</p>
       {children}
     </div>
-  );
-}
-
-function Upload({
-  label,
-  value,
-  onChange,
-  onError,
-  required = false,
-}: {
-  label: string;
-  value?: string;
-  onChange: (url: string, name: string) => void;
-  onError: (error: string) => void;
-  required?: boolean;
-}) {
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  return (
-    <label className={`cp-upload${value ? " cp-upload-done" : ""}`}>
-      {value ? (
-        <PrivateImage src={value} alt={label} />
-      ) : (
-        <IconCamera size={24} stroke={1.4} />
-      )}
-      <span>
-        <strong>
-          {label}
-          {required && <span className="cp-required"> *</span>}
-        </strong>
-        <small>
-          {busy
-            ? "Reading photo…"
-            : value
-              ? name || "Photo attached · Click to replace"
-              : "JPG, PNG or WebP · up to 5 MB"}
-        </small>
-      </span>
-      {value ? <IconCircleCheck size={21} /> : <IconUpload size={18} />}
-      <input
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        aria-label={label}
-        disabled={busy}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-            onError("Choose a JPG, PNG, or WebP image.");
-            e.target.value = "";
-            return;
-          }
-          if (file.size > 5 * 1024 * 1024) {
-            onError("This photo is too large. Choose an image under 5 MB.");
-            e.target.value = "";
-            return;
-          }
-          setBusy(true);
-          const reader = new FileReader();
-          reader.onload = () => {
-            onChange(String(reader.result), file.name);
-            setName(file.name);
-            setBusy(false);
-            onError("");
-          };
-          reader.onerror = () => {
-            setBusy(false);
-            onError("The photo could not be read. Please choose it again.");
-          };
-          reader.readAsDataURL(file);
-        }}
-      />
-    </label>
   );
 }
 
@@ -270,7 +207,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const nested = Boolean(
     form ||
     selectedTask ||
-    ["history", "expenses", "notifications"].includes(view),
+    ["history", "expenses", "notifications", "photo-settings"].includes(view),
   );
   const navigate = useCallback((target: View) => {
     if (equipmentDraft.current.busy) return;
@@ -304,7 +241,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     haptic("success");
   };
   const save = async (action: Action, message: string, closeForm = false) => {
-    if (running.current || busy) return;
+    if (running.current || busy) return false;
     running.current = true;
     setSaveError("");
     try {
@@ -313,9 +250,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       if (closeForm) setForm(null);
       if (action.type === "REVIEW_TASK" && action.accept) setSelectedTask(null);
       notify(message);
+      return true;
     } catch (error) {
       setSaveError((error as Error).message);
       haptic("error");
+      return false;
     } finally {
       running.current = false;
     }
@@ -388,7 +327,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     <div
       className={`cp-app${embedded ? " cp-in-telegram" : ""}${form || selected ? " cp-focused" : ""}`}
       onChange={() => {
-        if (form || selectedTask) setDirty(true);
+        if (form || selectedTask || view === "photo-settings") setDirty(true);
       }}
     >
       <a className="cp-skip" href="#workspace-content">
@@ -662,6 +601,15 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         label: "Notifications",
                         icon: IconBell,
                       },
+                      ...(isManager
+                        ? [
+                            {
+                              id: "photo-settings" as const,
+                              label: "Report photos",
+                              icon: IconCamera,
+                            },
+                          ]
+                        : []),
                     ].map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
@@ -675,10 +623,21 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       </button>
                     ))}
                   </div>
-                  <button className="cp-text-button" onClick={workspace.logout}>
-                    Sign out
-                  </button>
                 </>
+              )}
+              {view === "photo-settings" && isManager && (
+                <PhotoSettingsPage
+                  settings={
+                    state.photoSettings || {
+                      reportFields: defaultReportPhotoFields,
+                      version: 1,
+                    }
+                  }
+                  actorId={user.id}
+                  onBack={back}
+                  onDirty={() => setDirty(true)}
+                  onSave={(action, message) => save(action, message)}
+                />
               )}
               {view === "expenses" && (
                 <>
@@ -986,8 +945,21 @@ function TaskDetails({
   onSave: (action: Action, message: string) => void;
 }) {
   const { person } = usePeople();
-  const [photo, setPhoto] = useState(task.photo || "");
-  const [photoName, setPhotoName] = useState(task.photoName || "");
+  const photoMode =
+    task.photoMode || (task.requiresPhoto ? "single" : "optional");
+  const photoRequirements = task.photoRequirements || [];
+  const evidence =
+    task.photos ||
+    (task.photo
+      ? [
+          {
+            url: task.photo,
+            slot: "",
+            label: task.photoName || "Completion photo",
+          },
+        ]
+      : []);
+  const [photos, setPhotos] = useState<EvidencePhoto[]>(evidence);
   const [note, setNote] = useState(task.note || "");
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
@@ -1038,9 +1010,14 @@ function TaskDetails({
             </span>
             <span>
               <IconCamera size={16} />
-              {task.requiresPhoto
-                ? "Completion photo required"
-                : "Completion photo optional"}
+              {
+                {
+                  optional: "Completion photo optional",
+                  single: "One completion photo required",
+                  multiple: "Completion photos required",
+                  named: "Named completion photos",
+                }[photoMode]
+              }
             </span>
             {task.priority === "high" && (
               <span className="cp-priority">
@@ -1073,14 +1050,13 @@ function TaskDetails({
               </div>
             </div>
           )}
-          {task.photo && !canSubmit && (
-            <figure className="cp-reference">
-              <PrivateImage src={task.photo} alt="Task completion evidence" />
-              <figcaption>
-                Completion photo{task.photoName ? ` · ${task.photoName}` : ""}
-              </figcaption>
-            </figure>
-          )}
+          {!canSubmit &&
+            evidence.map((photo, index) => (
+              <figure className="cp-reference" key={photo.id || index}>
+                <PrivateImage src={photo.url} alt={photo.label} />
+                <figcaption>{photo.label}</figcaption>
+              </figure>
+            ))}
           {task.note && !canSubmit && (
             <div className="cp-completion-note">
               <h3>Completion note</h3>
@@ -1091,10 +1067,13 @@ function TaskDetails({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (task.requiresPhoto && !photo) {
-                  setError(
-                    "Add the required completion photo before closing this task.",
-                  );
+                const photoError = photoEvidenceError(
+                  photoMode,
+                  photoRequirements,
+                  photos,
+                );
+                if (photoError) {
+                  setError(photoError);
                   return;
                 }
                 onSave(
@@ -1102,8 +1081,7 @@ function TaskDetails({
                     type: "SUBMIT_TASK",
                     actorId: user.id,
                     taskId: task.id,
-                    photo: photo || undefined,
-                    photoName,
+                    photos,
                     note,
                   },
                   `Task sent to ${person(task.managerId).name} for review.`,
@@ -1111,15 +1089,12 @@ function TaskDetails({
               }}
             >
               <h2 className="cp-form-section-title">Your completion</h2>
-              <Upload
-                label="Completion photo"
-                required={task.requiresPhoto}
-                value={photo}
+              <EvidenceUploads
+                mode={photoMode}
+                fields={photoRequirements}
+                photos={photos}
+                onChange={setPhotos}
                 onError={setError}
-                onChange={(url, name) => {
-                  setPhoto(url);
-                  setPhotoName(name);
-                }}
               />
               <label className="cp-field">
                 Completion note
@@ -1271,9 +1246,14 @@ function WorkflowForm({
   const [description, setDescription] = useState("");
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState<"high" | "normal" | "low">("normal");
-  const [photoRequired, setPhotoRequired] = useState(false);
+  const [photoMode, setPhotoMode] = useState<PhotoMode>("optional");
+  const [taskPhotoFields, setTaskPhotoFields] = useState<PhotoRequirement[]>(
+    [],
+  );
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [photo, setPhoto] = useState("");
+  const reportPhotoFields =
+    state.shift?.photoRequirements || defaultReportPhotoFields;
   const assignees = people.filter((person) =>
     user.role === "superuser"
       ? person.role === "admin" || person.role === "manager"
@@ -1354,7 +1334,9 @@ function WorkflowForm({
         );
         return;
       }
-      if (requiredPhotoSlots.some((slot) => !photos[slot])) {
+      if (
+        reportPhotoFields.some((field) => field.required && !photos[field.id])
+      ) {
         setError(
           "Add a photo for each required field before closing your shift.",
         );
@@ -1367,7 +1349,13 @@ function WorkflowForm({
           cash: Number(cash),
           cards: Number(cards),
           sbp: Number(sbp),
-          photos,
+          photos: reportPhotoFields
+            .filter((field) => photos[field.id])
+            .map((field) => ({
+              url: photos[field.id],
+              slot: field.id,
+              label: field.label,
+            })),
         },
         "Shift closed. Your report is saved and the next administrator can open a shift.",
       );
@@ -1384,6 +1372,13 @@ function WorkflowForm({
         setError("Add a task title and clear instructions.");
         return;
       }
+      if (photoMode === "named") {
+        const photoError = photoFieldsError(taskPhotoFields);
+        if (!taskPhotoFields.length || photoError) {
+          setError(photoError || "Add at least one named photo field.");
+          return;
+        }
+      }
       onSave(
         {
           type: "CREATE_TASK",
@@ -1393,7 +1388,19 @@ function WorkflowForm({
             description: description.trim(),
             adminId,
             priority,
-            requiresPhoto: photoRequired,
+            requiresPhoto:
+              photoMode === "single" ||
+              photoMode === "multiple" ||
+              (photoMode === "named" &&
+                taskPhotoFields.some((field) => field.required)),
+            photoMode,
+            photoRequirements:
+              photoMode === "named"
+                ? taskPhotoFields.map((field) => ({
+                    ...field,
+                    label: field.label.trim(),
+                  }))
+                : [],
             referencePhoto: photo || undefined,
           },
         },
@@ -1561,27 +1568,21 @@ function WorkflowForm({
                 </strong>
               </div>
               <h2 className="cp-form-section-title">Closing photos</h2>
-              <p className="cp-field-hint">Both photos are required.</p>
-              {requiredPhotoSlots.map((slot) => (
+              <p className="cp-field-hint">
+                Fields marked * are required. Up to 15 MB combined.
+              </p>
+              {reportPhotoFields.map((field) => (
                 <Upload
-                  key={slot}
-                  label={slot}
-                  required
-                  value={photos[slot]}
+                  key={field.id}
+                  label={field.label}
+                  required={field.required}
+                  value={photos[field.id]}
                   onError={setError}
                   onChange={(url) =>
-                    setPhotos((prev) => ({ ...prev, [slot]: url }))
+                    setPhotos((prev) => ({ ...prev, [field.id]: url }))
                   }
                 />
               ))}
-              <Upload
-                label="Additional photo"
-                value={photos.Additional}
-                onError={setError}
-                onChange={(url) =>
-                  setPhotos((prev) => ({ ...prev, Additional: url }))
-                }
-              />
               <div className="cp-form-note">
                 <IconInfoCircle size={18} />
                 <p>
@@ -1653,20 +1654,29 @@ function WorkflowForm({
                 onError={setError}
                 onChange={setPhoto}
               />
-              <label className="cp-toggle-field">
-                <span>
-                  <strong>Require a completion photo</strong>
-                  <small>
-                    The assignee must attach a photo to close this task.
-                  </small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={photoRequired}
-                  onChange={(e) => setPhotoRequired(e.target.checked)}
-                />
-                <span className="cp-toggle" />
+              <label className="cp-field">
+                Completion photo requirements
+                <select
+                  aria-label="Task photo requirements"
+                  value={photoMode}
+                  onChange={(event) =>
+                    setPhotoMode(event.target.value as PhotoMode)
+                  }
+                >
+                  <option value="optional">Optional photo</option>
+                  <option value="single">One photo, no description</option>
+                  <option value="multiple">
+                    Multiple photos, no descriptions
+                  </option>
+                  <option value="named">Specific named photos</option>
+                </select>
               </label>
+              {photoMode === "named" && (
+                <PhotoFieldsEditor
+                  fields={taskPhotoFields}
+                  onChange={setTaskPhotoFields}
+                />
+              )}
               <div className="cp-form-note">
                 <IconLock size={17} />
                 <p>
