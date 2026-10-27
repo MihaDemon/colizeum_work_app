@@ -172,6 +172,42 @@ test("task creation supports specified photo fields", async ({
   expect(body).toContain('"label":"After cleaning","required":true');
 });
 
+test("deleted employees remain in history and cannot receive new tasks", async ({
+  page,
+}) => {
+  await setup(page, { owner: true, deletedManager: true });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Создать задачу", exact: true })
+    .click();
+  const assignees = page.getByLabel("Исполнитель", { exact: true });
+  await expect(assignees.locator("option")).toHaveCount(1);
+  await expect(assignees).toContainText("Администратор смены");
+  await expect(assignees).not.toContainText("удалён");
+});
+
+test("tasks from deleted managers go to superuser moderation", async ({
+  page,
+}) => {
+  await setup(page, { deletedManager: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Убрать игровые места/ }).click();
+  await page.getByLabel("Фото выполнения", { exact: true }).setInputFiles({
+    name: "done.png",
+    mimeType: "image/png",
+    buffer: photo,
+  });
+  await page
+    .getByRole("button", { name: "Закрыть задачу", exact: true })
+    .click();
+  await expect(page.locator(".cp-review-notice")).toContainText(
+    "Задачу проверит суперпользователь",
+  );
+  await expect(page.getByRole("status")).toContainText(
+    "Задача отправлена на проверку суперпользователю",
+  );
+});
+
 test("named task uploads enforce every required field and show all moderation photos", async ({
   page,
 }, info) => {
@@ -292,6 +328,7 @@ async function setup(
     noShift?: boolean;
     contactShared?: boolean;
     owner?: boolean;
+    deletedManager?: boolean;
     reportFields?: { id: string; label: string; required: boolean }[];
     photoMode?: "single" | "multiple" | "named";
     taskPhotoFields?: { id: string; label: string; required: boolean }[];
@@ -460,10 +497,13 @@ async function setup(
                   role,
                 },
                 {
-                  id: "2",
-                  name: "Управляющий",
+                  id: options.deletedManager ? "deleted-2" : "2",
+                  name: options.deletedManager
+                    ? "Управляющий (удалён)"
+                    : "Управляющий",
                   initials: "M",
                   role: "manager",
+                  deleted: options.deletedManager || undefined,
                 },
                 {
                   id: "3",
@@ -471,6 +511,17 @@ async function setup(
                   initials: "SA",
                   role: "admin",
                 },
+                ...(options.deletedManager
+                  ? [
+                      {
+                        id: "deleted-4",
+                        name: "Администратор (удалён)",
+                        initials: "А",
+                        role: "admin",
+                        deleted: true,
+                      },
+                    ]
+                  : []),
               ],
               state: {
                 photoSettings,
@@ -493,7 +544,7 @@ async function setup(
                     title: "Убрать игровые места",
                     description: "Wipe keyboards",
                     adminId: "1",
-                    managerId: "2",
+                    managerId: options.deletedManager ? "deleted-2" : "2",
                     requiresPhoto: true,
                     photoMode: options.photoMode || "single",
                     photoRequirements: options.taskPhotoFields || [],

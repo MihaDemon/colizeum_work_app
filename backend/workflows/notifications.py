@@ -13,6 +13,8 @@ from .models import TelegramNotification
 
 
 def telegram_send(recipient, task):
+    if recipient is None:
+        raise DeliveryError('Получатель удалён.')
     if not settings.TELEGRAM_BOT_TOKEN or not recipient.telegram_id or not recipient.is_active:
         raise DeliveryError('Не указан токен бота или Telegram ID получателя.')
     payload = {'chat_id': recipient.telegram_id,
@@ -51,7 +53,12 @@ def deliver_one(send=telegram_send):
         job.attempts += 1
         job.next_attempt_at = now + timedelta(minutes=2)
         job.save(update_fields=['status', 'claim_token', 'attempts', 'next_attempt_at'])
-    job = TelegramNotification.objects.select_related('recipient', 'submission__task').get(pk=job.pk)
+    job = TelegramNotification.objects.select_related('recipient', 'submission__task').filter(pk=job.pk).first()
+    if job is None or job.status != 'sending' or job.claim_token != claim:
+        return True
+    if job.recipient_id is None:
+        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель удалён.')
+        return True
     try:
         send(job.recipient, job.submission.task)
     except Exception as exc:

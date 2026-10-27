@@ -5,6 +5,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from users.models import AdminUser
 from users.forms import AdminUserForm
+from users.deletion import delete_employees, delete_staff_cards
 
 User = get_user_model()
 
@@ -65,6 +66,24 @@ class UserAdmin(BaseUserAdmin):
     )
     readonly_fields = ('date_joined', 'last_login')
 
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def get_deleted_objects(self, objs, request):
+        deleted, counts, permissions, protected = super().get_deleted_objects(objs, request)
+        phones = [obj.phone_number_id for obj in objs if obj.phone_number_id is not None]
+        cards = list(AdminUser.objects.filter(pk__in=phones))
+        if cards:
+            deleted.extend(f'{AdminUser._meta.verbose_name}: {card}' for card in cards)
+            counts[AdminUser._meta.verbose_name_plural] = len(cards)
+        return deleted, counts, permissions, protected
+
+    def delete_model(self, request, obj):
+        delete_employees(User.objects.filter(pk=obj.pk))
+
+    def delete_queryset(self, request, queryset):
+        delete_employees(queryset)
+
 
 @admin.register(AdminUser)
 class AdminUserAdmin(admin.ModelAdmin):
@@ -75,6 +94,12 @@ class AdminUserAdmin(admin.ModelAdmin):
     )
     search_fields = ('phone_number', 'first_name', 'last_name')
     list_filter = ('role',)
+
+    def delete_model(self, request, obj):
+        delete_staff_cards(AdminUser.objects.filter(pk=obj.pk))
+
+    def delete_queryset(self, request, queryset):
+        delete_staff_cards(queryset)
 
     def get_fields(self, request, obj=None):
         fields = ('first_name', 'last_name', 'phone_number', 'role')

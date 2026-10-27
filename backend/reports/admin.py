@@ -126,7 +126,9 @@ class ReportsAdminBase(admin.ModelAdmin):
 
     @admin.display(description='Администратор', ordering='admin__username')
     def administrator(self, obj):
-        return obj.admin.get_username() if obj.admin else 'Не указан'
+        if obj.admin:
+            return obj.admin.get_username()
+        return obj.user_snapshots.get('admin', {}).get('name', 'Не указан')
 
     @admin.display(description='Фото', ordering='_photo_count')
     def photo_count(self, obj):
@@ -264,18 +266,32 @@ class ExpensesAdmin(ReportsAdminBase):
         return text if len(text) <= 90 else f'{text[:87]}…'
 
 
+class CashRegisterForm(forms.ModelForm):
+    class Meta:
+        model = CashRegister
+        fields = ('balance',)
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.instance._state.adding and CashRegister.objects.filter(pk=1).exists():
+            raise forms.ValidationError('Касса уже существует. Измените остаток в существующей кассе.')
+        return cleaned
+
+
 @admin.register(CashRegister)
 class CashRegisterAdmin(admin.ModelAdmin):
+    form = CashRegisterForm
     list_display = ('__str__', 'balance')
-    readonly_fields = ('balance',)
     fields = ('balance',)
-    actions = None
+
+    def get_readonly_fields(self, request, obj=None):
+        return () if request.user.is_superuser else ('balance',)
 
     def has_add_permission(self, request):
-        return False
+        return request.user.is_superuser
 
     def has_change_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser

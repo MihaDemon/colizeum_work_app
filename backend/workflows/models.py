@@ -5,10 +5,11 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q, Value
 from .photos import default_report_fields
+from users.history import UserHistory
 
 
 class PhotoSettings(models.Model):
-    report_fields = models.JSONField(default=default_report_fields, verbose_name='Поля фотографий отчёта')
+    report_fields = models.JSONField(default=default_report_fields, blank=True, verbose_name='Поля фотографий отчёта')
     version = models.PositiveIntegerField(default=1, verbose_name='Версия')
 
     class Meta:
@@ -16,9 +17,9 @@ class PhotoSettings(models.Model):
         verbose_name_plural = 'Настройки фотографий'
 
 
-class Shift(models.Model):
-    photo_requirements = models.JSONField(default=default_report_fields, verbose_name='Требования к фотографиям')
-    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Администратор')
+class Shift(UserHistory):
+    photo_requirements = models.JSONField(default=default_report_fields, blank=True, verbose_name='Требования к фотографиям')
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор')
     shift_type = models.CharField(max_length=5, choices=[('day', 'День'), ('night', 'Ночь')], verbose_name='Тип смены')
     opened_at = models.DateTimeField(auto_now_add=True, verbose_name='Открыта')
     closed_at = models.DateTimeField(null=True, blank=True, verbose_name='Закрыта')
@@ -35,22 +36,22 @@ class Shift(models.Model):
         ]
 
 
-class Task(models.Model):
+class Task(UserHistory):
     class Status(models.TextChoices):
         ACTIVE = 'active', 'К выполнению'
         MODERATION = 'moderation', 'На проверке'
         ACCEPTED = 'accepted', 'Принято'
         REJECTED = 'rejected', 'На доработке'
 
-    creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='assigned_tasks', verbose_name='Постановщик')
-    assignee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='received_tasks', verbose_name='Исполнитель')
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tasks', verbose_name='Постановщик')
+    assignee = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_tasks', verbose_name='Исполнитель')
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Смена')
     title = models.CharField(max_length=200, verbose_name='Название')
     description = models.TextField(blank=True, verbose_name='Описание')
     priority = models.CharField(max_length=6, choices=[('normal', 'Обычный'), ('high', 'Высокий'), ('low', 'Низкий')], default='normal', verbose_name='Приоритет')
     requires_photo = models.BooleanField(default=False, verbose_name='Обязательны фотографии')
     photo_mode = models.CharField(max_length=8, choices=[('optional', 'Необязательное фото'), ('single', 'Одно фото'), ('multiple', 'Несколько фото'), ('named', 'Именованные фотографии')], default='optional', verbose_name='Режим фотографий')
-    photo_requirements = models.JSONField(default=list, verbose_name='Требования к фотографиям')
+    photo_requirements = models.JSONField(default=list, blank=True, verbose_name='Требования к фотографиям')
     reference_photo = EvidenceImageField(upload_to='tasks/reference/%Y/%m/', blank=True, verbose_name='Фото-пример')
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE, verbose_name='Статус')
     submission_version = models.PositiveIntegerField(default=0, verbose_name='Версия выполнения')
@@ -66,14 +67,14 @@ class Task(models.Model):
         constraints = [models.CheckConstraint(condition=~Q(creator=models.F('assignee')), name='no_self_assigned_task')]
 
 
-class TaskSubmission(models.Model):
+class TaskSubmission(UserHistory):
     task = models.ForeignKey(Task, on_delete=models.PROTECT, related_name='submissions', verbose_name='Задача')
     version = models.PositiveIntegerField(verbose_name='Версия')
-    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+', verbose_name='Исполнитель')
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Исполнитель')
     photo = EvidenceImageField(upload_to='tasks/completion/%Y/%m/', blank=True, verbose_name='Фотография')
     note = models.TextField(blank=True, verbose_name='Комментарий')
     submitted_at = models.DateTimeField(auto_now_add=True, verbose_name='Отправлено на проверку')
-    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='+', verbose_name='Проверил')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Проверил')
     reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата проверки')
     decision = models.CharField(max_length=8, choices=[('accepted', 'Принято'), ('rejected', 'Отклонено')], blank=True, verbose_name='Решение')
     reason = models.TextField(blank=True, verbose_name='Причина')
@@ -106,8 +107,8 @@ class ShiftExpense(models.Model):
         verbose_name_plural = 'Расходы смен'
 
 
-class Activity(models.Model):
-    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Сотрудник')
+class Activity(UserHistory):
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Сотрудник')
     task = models.ForeignKey(Task, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Задача')
     title = models.CharField(max_length=200, verbose_name='Название')
     description = models.TextField(blank=True, verbose_name='Описание')
@@ -120,9 +121,9 @@ class Activity(models.Model):
         ordering = ['-created_at']
 
 
-class TelegramNotification(models.Model):
+class TelegramNotification(UserHistory):
     submission = models.OneToOneField(TaskSubmission, on_delete=models.PROTECT, verbose_name='Выполнение задачи')
-    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, verbose_name='Получатель')
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Получатель')
     status = models.CharField(max_length=10, default='pending', choices=[('pending', 'Ожидает отправки'), ('sending', 'Отправляется'), ('sent', 'Отправлено'), ('failed', 'Ошибка отправки')], verbose_name='Статус')
     attempts = models.PositiveIntegerField(default=0, verbose_name='Попытки отправки')
     next_attempt_at = models.DateTimeField(verbose_name='Следующая попытка')

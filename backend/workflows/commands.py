@@ -37,7 +37,7 @@ def idempotent_command(handler):
                     digest.update(json.dumps(value, sort_keys=True).encode())
         fingerprint = digest.hexdigest()
         with transaction.atomic():
-            lock_register()
+            lock_register(request.user)
             receipt = CommandReceipt.objects.filter(user=request.user, key=key).first()
             if receipt:
                 if receipt.fingerprint != fingerprint:

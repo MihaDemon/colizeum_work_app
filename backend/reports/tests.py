@@ -186,7 +186,7 @@ class ReportsAdminTests(TestCase):
         self.assertContains(expense, 'name="from_register"')
         self.assertNotContains(expense, 'name="date"')
 
-    def test_admin_report_creation_and_cash_register_is_read_only(self):
+    def test_admin_report_creation_and_superuser_cash_register_edit(self):
         response = self.client.post('/admin/reports/report/add/', {
             'date': '2026-10-11', 'shift': 'night',
             'admin': self.user.pk, 'cards': '10.00', 'spb': '20.00',
@@ -199,8 +199,22 @@ class ReportsAdminTests(TestCase):
         self.assertEqual(CashRegister.get_default().balance, Decimal('100.00'))
         register = self.client.get('/admin/reports/cashregister/1/change/')
         self.assertEqual(register.status_code, 200)
-        self.assertNotContains(register, 'name="balance"')
-        self.assertEqual(self.client.post('/admin/reports/cashregister/1/change/', {'balance': '999.00'}).status_code, 403)
+        self.assertContains(register, 'name="balance"')
+        self.assertEqual(self.client.post('/admin/reports/cashregister/1/change/', {'balance': '999.00'}).status_code, 302)
+        self.assertEqual(CashRegister.get_default().balance, Decimal('999.00'))
+
+    def test_superuser_can_create_delete_cash_register_and_cannot_overwrite_by_adding(self):
+        url = '/admin/reports/cashregister/'
+        self.assertEqual(self.client.post(url + 'add/', {'balance': '150.00'}).status_code, 302)
+        self.assertEqual(CashRegister.get_default().balance, Decimal('150.00'))
+        duplicate = self.client.post(url + 'add/', {'balance': '1.00'})
+        self.assertContains(duplicate, 'Касса уже существует')
+        self.assertEqual(CashRegister.get_default().balance, Decimal('150.00'))
+        negative = self.client.post(url + '1/change/', {'balance': '-1.00'})
+        self.assertEqual(negative.status_code, 200)
+        self.assertEqual(CashRegister.get_default().balance, Decimal('150.00'))
+        self.assertEqual(self.client.post(url + '1/delete/', {'post': 'yes'}).status_code, 302)
+        self.assertFalse(CashRegister.objects.exists())
 
     def test_failed_inline_validation_preserves_stored_cash_effect_for_preview(self):
         report = Report.objects.create(date=timezone.localdate(), cash='2000.00')
