@@ -23,13 +23,18 @@ def idempotent_command(handler):
         digest = hashlib.sha256(request.path.encode())
         for name in sorted(request.data):
             digest.update(name.encode())
-            value = request.data[name]
-            if hasattr(value, 'chunks'):
-                for chunk in value.chunks():
-                    digest.update(chunk)
-                value.seek(0)
-            else:
-                digest.update(json.dumps(value, sort_keys=True).encode())
+            values = request.data.getlist(name) if hasattr(request.data, 'getlist') else [request.data[name]]
+            if len(values) > 1:
+                digest.update(f'[{len(values)}]'.encode())
+            for value in values:
+                if hasattr(value, 'chunks'):
+                    if len(values) > 1:
+                        digest.update(f'{value.size}:'.encode())
+                    for chunk in value.chunks():
+                        digest.update(chunk)
+                    value.seek(0)
+                else:
+                    digest.update(json.dumps(value, sort_keys=True).encode())
         fingerprint = digest.hexdigest()
         with transaction.atomic():
             lock_register()

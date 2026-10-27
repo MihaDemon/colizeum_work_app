@@ -30,6 +30,7 @@ router.register('tasks', work.TaskViewSet, basename='task')
 urlpatterns = [
     path('device-qr/<str:ticket>/', download_device_qr, name='device-qr-download'),
     path('workspace/', work.workspace),
+    path('photo-settings/', work.photo_settings),
     path('shift-expenses/', work.expense),
     path('health/', work.health),
     path('files/<str:kind>/<int:pk>/', work.private_file),

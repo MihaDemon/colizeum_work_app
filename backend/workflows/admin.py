@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import Activity, Shift, ShiftExpense, Task, TaskSubmission, TelegramNotification
+from .models import Activity, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -40,4 +40,6 @@ class NotificationAdmin(ReadOnlyAdmin):
 
 admin.site.register(Activity, ReadOnlyAdmin)
 admin.site.register(TaskSubmission, ReadOnlyAdmin)
+admin.site.register(TaskSubmissionPhoto, ReadOnlyAdmin)
+admin.site.register(PhotoSettings, ReadOnlyAdmin)
 admin.site.register(ShiftExpense, ReadOnlyAdmin)

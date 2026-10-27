@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Workspace from "./pages/Workspace";
-import type { Action, StaffMember, State } from "./lib/workspace";
+import type {
+  Action,
+  EvidencePhoto,
+  StaffMember,
+  State,
+} from "./lib/workspace";
 import { ApiError, request } from "./lib/api";
 import type { User } from "./lib/types";
 import { Loading } from "./components/UI";
@@ -19,13 +24,24 @@ async function attach(body: FormData, field: string, value?: string) {
   body.append(field, blob, `${field}.${extension}`);
 }
 
-export default function LiveWorkspace({
-  account,
-  logout,
-}: {
-  account: User;
-  logout: () => void;
-}) {
+async function attachPhotos(
+  body: FormData,
+  photos: EvidencePhoto[],
+  retain = false,
+) {
+  const slots: string[] = [];
+  const retained: string[] = [];
+  for (const photo of photos) {
+    if (photo.url.startsWith("data:image/")) {
+      await attach(body, "photos", photo.url);
+      slots.push(photo.slot);
+    } else if (photo.id) retained.push(photo.id);
+  }
+  body.append("photo_slots", JSON.stringify(slots));
+  if (retain) body.append("retained_photos", JSON.stringify(retained));
+}
+
+export default function LiveWorkspace({ account }: { account: User }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const snapshotRef = useRef<Snapshot | null>(null);
   const [error, setError] = useState("");
@@ -81,9 +97,7 @@ export default function LiveWorkspace({
           body.append("cash", action.cash.toFixed(2));
           body.append("cards", action.cards.toFixed(2));
           body.append("sbp", action.sbp.toFixed(2));
-          await attach(body, "desk_photo", action.photos["Administrator desk"]);
-          await attach(body, "receipt_photo", action.photos["Closing receipt"]);
-          await attach(body, "additional_photo", action.photos.Additional);
+          await attachPhotos(body, action.photos);
           break;
         }
         case "ADD_EXPENSE":
@@ -99,12 +113,27 @@ export default function LiveWorkspace({
           body.append("assignee", action.task.adminId);
           body.append("priority", action.task.priority);
           body.append("requires_photo", String(action.task.requiresPhoto));
+          body.append(
+            "photo_mode",
+            action.task.photoMode ||
+              (action.task.requiresPhoto ? "single" : "optional"),
+          );
+          body.append(
+            "photo_requirements",
+            JSON.stringify(action.task.photoRequirements || []),
+          );
           await attach(body, "reference_photo", action.task.referencePhoto);
           break;
         case "SUBMIT_TASK":
           path = `tasks/${action.taskId}/submit/`;
           body.append("note", action.note || "");
-          await attach(body, "photo", action.photo);
+          if (action.photos) await attachPhotos(body, action.photos, true);
+          else await attach(body, "photo", action.photo);
+          break;
+        case "SAVE_PHOTO_SETTINGS":
+          path = "photo-settings/";
+          body.append("report_fields", JSON.stringify(action.fields));
+          body.append("version", String(action.version));
           break;
         case "REVIEW_TASK":
           path = `tasks/${action.taskId}/review/`;
@@ -151,8 +180,6 @@ export default function LiveWorkspace({
       <Loading />
     );
   return (
-    <Workspace
-      workspace={{ ...snapshot, account, busy, error, perform, logout }}
-    />
+    <Workspace workspace={{ ...snapshot, account, busy, error, perform }} />
   );
 }

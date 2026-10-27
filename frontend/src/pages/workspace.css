@@ -83,9 +83,11 @@ html.mini-app-page,
   background: var(--cp-accent);
   color: #111;
   z-index: 50;
+  clip-path: inset(50%);
 }
 .cp-skip:focus {
   top: 12px;
+  clip-path: none;
 }
 .cp-header {
   display: flex;
@@ -455,6 +457,47 @@ html.mini-app-page,
   align-items: center;
   gap: 14px;
   padding-bottom: 25px;
+}
+.cp-photo-fields {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.cp-photo-field-row {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--cp-line);
+}
+.cp-photo-field-row .cp-field {
+  margin-bottom: 8px;
+}
+.cp-photo-field-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cp-app .cp-photo-field-actions label {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 44px;
+  margin: 0;
+}
+.cp-app .cp-photo-field-actions input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  accent-color: var(--cp-accent);
+}
+.cp-photo-field-actions button {
+  min-width: 44px;
+  min-height: 44px;
 }
 .cp-account strong {
   font-size: 16px;

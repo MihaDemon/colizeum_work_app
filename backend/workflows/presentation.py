@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from reports.models import CashRegister, Expenses, Report
-from .models import Activity, Shift, Task
+from .models import Activity, PhotoSettings, Shift, Task
 from .permissions import person, visible_tasks
 
 
@@ -15,14 +15,21 @@ def iso(value):
 
 def task_data(task):
     submission = next(iter(task.submissions.all()), None)
+    photos = []
+    if submission:
+        if submission.photo:
+            photos.append({'id': f'legacy-{submission.pk}', 'slot': '', 'label': 'Completion photo', 'url': file_url('submission', submission.pk)})
+        photos.extend({'id': str(photo.pk), 'slot': photo.slot, 'label': photo.label, 'url': file_url('submission-photo', photo.pk)} for photo in submission.photos.all())
     return {
         'id': str(task.pk), 'title': task.title, 'description': task.description,
         'managerId': str(task.creator_id), 'adminId': str(task.assignee_id),
         'shiftId': str(task.shift_id) if task.shift_id else None,
         'priority': task.priority, 'requiresPhoto': task.requires_photo,
+        'photoMode': 'single' if task.requires_photo and task.photo_mode == 'optional' else task.photo_mode,
+        'photoRequirements': task.photo_requirements, 'photos': photos,
         'referencePhoto': file_url('reference', task.pk) if task.reference_photo else None,
-        'status': task.status, 'submissionVersion': task.submission_version, 'photo': file_url('submission', submission.pk) if submission and submission.photo else None,
-        'photoName': 'Completion photo' if submission and submission.photo else None,
+        'status': task.status, 'submissionVersion': task.submission_version, 'photo': photos[0]['url'] if photos else None,
+        'photoName': photos[0]['label'] if photos else None,
         'note': submission.note if submission else '', 'rejectionReason': task.rejection_reason,
         'createdAt': iso(task.created_at), 'submittedAt': iso(task.submitted_at), 'acceptedAt': iso(task.accepted_at),
     }
@@ -33,6 +40,7 @@ def shift_data(shift):
     return {
         'id': str(shift.pk), 'adminId': str(shift.admin_id), 'type': shift.shift_type,
         'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
+        'photoRequirements': shift.photo_requirements,
         **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
             'total': str(report.cash + report.cards + report.spb),
             'photos': {p.label or f'Photo {p.pk}': file_url('report', p.pk) for p in report.photos.all()}} if report else {}),
@@ -40,7 +48,8 @@ def shift_data(shift):
 
 
 def workspace_data(user):
-    tasks = visible_tasks(user, Task.objects.select_related('creator', 'assignee').prefetch_related('submissions'))
+    tasks = visible_tasks(user, Task.objects.select_related('creator', 'assignee').prefetch_related('submissions__photos'))
+    photo_settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     shifts = Shift.objects.select_related('report').prefetch_related('report__photos')
     current = shifts.filter(closed_at__isnull=True).first()
     history = shifts.filter(closed_at__isnull=False)
@@ -78,6 +87,7 @@ def workspace_data(user):
     return {
         'user': person(user), 'people': [person(p) for p in people],
         'state': {
+            'photoSettings': {'reportFields': photo_settings.report_fields, 'version': photo_settings.version},
             'shift': shift_data(current) if current else None,
             'shifts': sorted([shift_data(s) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],
             'expenses': [{

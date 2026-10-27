@@ -1,6 +1,210 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
+const namedFields = [
+  { id: "before", label: "Before cleaning", required: true },
+  { id: "after", label: "After cleaning", required: true },
+];
+
+test("administrators have neither logout nor report photo settings", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /sign out|log out|logout/i }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Report photos", exact: true }),
+  ).toHaveCount(0);
+});
+
+for (const owner of [false, true]) {
+  test(`${owner ? "superusers" : "managers"} can configure named report photos in More`, async ({
+    page,
+  }, info) => {
+    await setup(page, { staff: !owner, owner });
+    await page.goto("/");
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: /sign out|log out|logout/i }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Report photos", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Remove photo field 3", exact: true })
+      .click();
+    await page
+      .getByLabel("Photo name 1", { exact: true })
+      .fill("Reception desk");
+    await page.getByLabel("Photo name 2", { exact: true }).fill("Gaming hall");
+    await page.getByLabel("Required photo 2", { exact: true }).uncheck();
+    await page.screenshot({
+      path: info.outputPath("report-photo-settings.png"),
+      fullPage: true,
+    });
+    const sent = page.waitForRequest(
+      (r) => r.url().endsWith("/api/photo-settings/") && r.method() === "POST",
+    );
+    await page
+      .getByRole("button", { name: "Save photo requirements", exact: true })
+      .click();
+    const data = (await sent).postData()!;
+    expect(data).toContain('"label":"Reception desk","required":true');
+    expect(data).toContain('"label":"Gaming hall","required":false');
+    await expect(page.getByRole("status")).toContainText(
+      "Report photo requirements saved",
+    );
+    await expect(page.getByLabel("Photo name 1", { exact: true })).toHaveValue(
+      "Reception desk",
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
+
+test("closing a shift uses its configured named fields", async ({ page }) => {
+  await setup(page, {
+    reportFields: [
+      { id: "reception", label: "Reception desk", required: true },
+      { id: "hall", label: "Gaming hall", required: false },
+    ],
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Close shift", exact: true }).click();
+  await expect(
+    page.getByLabel("Administrator desk", { exact: true }),
+  ).toHaveCount(0);
+  for (const label of ["Cash total", "Card total", "SBP total"])
+    await page.getByLabel(label, { exact: true }).fill("0");
+  await page.getByRole("button", { name: "Close shift", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("required field");
+  await page
+    .getByLabel("Reception desk", { exact: true })
+    .setInputFiles({ name: "desk.png", mimeType: "image/png", buffer: photo });
+  await expect(
+    page.getByRole("img", { name: "Reception desk", exact: true }),
+  ).toBeVisible();
+  const sent = page.waitForRequest((r) =>
+    r.url().endsWith("/api/shifts/shift-1/close/"),
+  );
+  await page.getByRole("button", { name: "Close shift", exact: true }).click();
+  expect((await sent).postData()).toContain('["reception"]');
+  await expect(
+    page.getByRole("button", { name: "Open shift", exact: true }),
+  ).toBeVisible();
+});
+
+test("task creation supports specified photo fields", async ({
+  page,
+}, info) => {
+  await setup(page, { staff: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create task", exact: true }).click();
+  await page.getByLabel("Task title", { exact: true }).fill("Clean reception");
+  await page
+    .getByLabel("Task instructions", { exact: true })
+    .fill("Clean and attach before/after photos.");
+  await page
+    .getByLabel("Task photo requirements", { exact: true })
+    .selectOption("named");
+  for (let index = 0; index < namedFields.length; index += 1) {
+    await page
+      .getByRole("button", { name: "Add photo field", exact: true })
+      .click();
+    await page
+      .getByLabel(`Photo name ${index + 1}`, { exact: true })
+      .fill(namedFields[index].label);
+  }
+  await page.screenshot({
+    path: info.outputPath("task-photo-settings.png"),
+    fullPage: true,
+  });
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith("/api/tasks/") && r.method() === "POST",
+  );
+  await page.getByRole("button", { name: "Assign task", exact: true }).click();
+  const body = (await sent).postData()!;
+  expect(body).toContain('name="photo_mode"\r\n\r\nnamed');
+  expect(body).toContain('"label":"Before cleaning","required":true');
+  expect(body).toContain('"label":"After cleaning","required":true');
+});
+
+test("named task uploads enforce every required field and show all moderation photos", async ({
+  page,
+}, info) => {
+  await setup(page, { photoMode: "named", taskPhotoFields: namedFields });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Clean the stations/ }).click();
+  await page
+    .getByLabel("Before cleaning", { exact: true })
+    .setInputFiles({
+      name: "before.png",
+      mimeType: "image/png",
+      buffer: photo,
+    });
+  await expect(
+    page.getByRole("img", { name: "Before cleaning", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("After cleaning");
+  await page
+    .getByLabel("After cleaning", { exact: true })
+    .setInputFiles({ name: "after.png", mimeType: "image/png", buffer: photo });
+  await expect(
+    page.getByRole("img", { name: "After cleaning", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("named-task-upload.png"),
+    fullPage: true,
+  });
+  const sent = page.waitForRequest((r) =>
+    r.url().endsWith("/api/tasks/task-1/submit/"),
+  );
+  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  expect((await sent).postData()).toContain('["before","after"]');
+  await expect(page.locator(".cp-review-notice")).toContainText(
+    "On moderation",
+  );
+  await expect(
+    page.getByRole("img", { name: "Before cleaning", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "After cleaning", exact: true }),
+  ).toBeVisible();
+});
+
+test("multiple unspecified task photos can be selected together", async ({
+  page,
+}) => {
+  await setup(page, { photoMode: "multiple" });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Clean the stations/ }).click();
+  await page.getByLabel("Completion photos", { exact: true }).setInputFiles([
+    { name: "one.png", mimeType: "image/png", buffer: photo },
+    { name: "two.png", mimeType: "image/png", buffer: photo },
+  ]);
+  await expect(
+    page.getByRole("img", { name: "Completion photo 1", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "Completion photo 2", exact: true }),
+  ).toBeVisible();
+  const sent = page.waitForRequest((r) =>
+    r.url().endsWith("/api/tasks/task-1/submit/"),
+  );
+  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  expect((await sent).postData()?.match(/name="photos"/g)).toHaveLength(2);
+  await expect(page.locator(".cp-review-notice")).toContainText(
+    "On moderation",
+  );
+});
+
 const photo = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8//8/AwMDEwMDAwMDAwAkBgMB/DXemwAAAABJRU5ErkJggg==",
   "base64",
@@ -48,6 +252,10 @@ async function setup(
     failure?: boolean;
     noShift?: boolean;
     contactShared?: boolean;
+    owner?: boolean;
+    reportFields?: { id: string; label: string; required: boolean }[];
+    photoMode?: "single" | "multiple" | "named";
+    taskPhotoFields?: { id: string; label: string; required: boolean }[];
   } = {},
 ) {
   await page.route("https://telegram.org/**", (route) =>
@@ -90,7 +298,8 @@ async function setup(
         },
         closeScanQrPopup() {},
         downloadFile(file: { url: string; file_name: string }) {
-          (window as unknown as { testDownload: typeof file }).testDownload = file;
+          (window as unknown as { testDownload: typeof file }).testDownload =
+            file;
         },
         requestContact(callback: (sent: boolean) => void) {
           callback(contactShared);
@@ -98,7 +307,10 @@ async function setup(
       };
       Object.defineProperty(window, "Telegram", { value: { WebApp: app } });
     },
-    { theme: options.theme || "dark", contactShared: options.contactShared !== false },
+    {
+      theme: options.theme || "dark",
+      contactShared: options.contactShared !== false,
+    },
   );
   await page.route("**/media/**", (route) =>
     route.fulfill({ contentType: "image/png", body: photo }),
@@ -107,17 +319,50 @@ async function setup(
   let balance = 1000;
   let taskStatus = "active";
   let contactChecks = 0;
+  let photoSettings = {
+    reportFields: options.reportFields || [
+      { id: "desk", label: "Administrator desk", required: true },
+      { id: "receipt", label: "Closing receipt", required: true },
+      { id: "additional", label: "Additional photo", required: false },
+    ],
+    version: 1,
+  };
+  let shiftFields = photoSettings.reportFields;
+  let submittedPhotos: {
+    id: string;
+    slot: string;
+    label: string;
+    url: string;
+  }[] = [];
+  const role = options.owner
+    ? "superuser"
+    : options.staff
+      ? "manager"
+      : "admin";
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     if (path.startsWith("/api/device-qr/")) {
       expect(route.request().headers().authorization).toBeUndefined();
-      return route.fulfill({ contentType: "image/png", headers: { "Content-Disposition": 'attachment; filename="station-1-qr.png"' }, body: photo });
+      return route.fulfill({
+        contentType: "image/png",
+        headers: {
+          "Content-Disposition": 'attachment; filename="station-1-qr.png"',
+        },
+        body: photo,
+      });
     }
     if (path.endsWith("/telegram/contact-status/")) {
-      expect(route.request().postDataJSON()).toEqual({ initData: "signed-telegram-test-data" });
+      expect(route.request().postDataJSON()).toEqual({
+        initData: "signed-telegram-test-data",
+      });
       contactChecks += 1;
-      return route.fulfill({ json: contactChecks > 1 ? { verified: true, phone_number: "9991234567" } : { verified: false } });
+      return route.fulfill({
+        json:
+          contactChecks > 1
+            ? { verified: true, phone_number: "9991234567" }
+            : { verified: false },
+      });
     }
     if (path.endsWith("/telegram/telegram/")) {
       const data = route.request().postDataJSON();
@@ -130,11 +375,32 @@ async function setup(
     }
     if (path.endsWith("/telegram/me/"))
       return route.fulfill({
-        json: { ...user, is_staff: Boolean(options.staff) },
+        json: {
+          ...user,
+          is_staff: Boolean(options.staff || options.owner),
+          is_superuser: Boolean(options.owner),
+        },
       });
     expect(route.request().headers().authorization).toBe("Token valid-token");
+    if (path.startsWith("/api/files/"))
+      return route.fulfill({ contentType: "image/png", body: photo });
+    if (path.endsWith("/photo-settings/")) {
+      const data = route.request().postData() || "";
+      photoSettings = {
+        reportFields: JSON.parse(
+          data.match(/name="report_fields"\r\n\r\n([^\r]+)/)![1],
+        ),
+        version: photoSettings.version + 1,
+      };
+      return route.fulfill({ json: photoSettings });
+    }
     if (path.endsWith("/qr-download/"))
-      return route.fulfill({ json: { url: "https://work.example.invalid/api/device-qr/test-ticket/", file_name: "station-1-qr.png" } });
+      return route.fulfill({
+        json: {
+          url: "https://work.example.invalid/api/device-qr/test-ticket/",
+          file_name: "station-1-qr.png",
+        },
+      });
     if (path.endsWith("/workspace/"))
       return route.fulfill({
         status: options.failure ? 500 : 200,
@@ -145,22 +411,30 @@ async function setup(
                 id: "1",
                 name: "Алексей Смирнов",
                 initials: "АС",
-                role: options.staff ? "manager" : "admin",
+                role,
               },
               people: [
                 {
                   id: "1",
                   name: "Алексей Смирнов",
                   initials: "АС",
-                  role: options.staff ? "manager" : "admin",
+                  role,
                 },
                 { id: "2", name: "Manager", initials: "M", role: "manager" },
+                {
+                  id: "3",
+                  name: "Shift Administrator",
+                  initials: "SA",
+                  role: "admin",
+                },
               ],
               state: {
+                photoSettings,
                 shift: active
                   ? {
                       id: "shift-1",
-                      adminId: "1",
+                      adminId: role === "admin" ? "1" : "3",
+                      photoRequirements: shiftFields,
                       type: "night",
                       openedAt: new Date().toISOString(),
                     }
@@ -177,6 +451,9 @@ async function setup(
                     adminId: "1",
                     managerId: "2",
                     requiresPhoto: true,
+                    photoMode: options.photoMode || "single",
+                    photoRequirements: options.taskPhotoFields || [],
+                    photos: submittedPhotos,
                     priority: "normal",
                     status: taskStatus,
                     createdAt: new Date().toISOString(),
@@ -185,10 +462,27 @@ async function setup(
               },
             },
       });
-    if (path.endsWith("/shifts/open/")) active = true;
+    if (path.endsWith("/shifts/open/")) {
+      active = true;
+      shiftFields = photoSettings.reportFields;
+    }
     if (path.endsWith("/shifts/shift-1/close/")) active = false;
     if (path.endsWith("/shift-expenses/")) balance = 950;
-    if (path.endsWith("/tasks/task-1/submit/")) taskStatus = "moderation";
+    if (path.endsWith("/tasks/task-1/submit/")) {
+      taskStatus = "moderation";
+      const data = route.request().postData() || "";
+      const slots: string[] = JSON.parse(
+        data.match(/name="photo_slots"\r\n\r\n([^\r]+)/)![1],
+      );
+      submittedPhotos = slots.map((slot, index) => ({
+        id: String(index + 1),
+        slot,
+        label:
+          options.taskPhotoFields?.find((field) => field.id === slot)?.label ||
+          "Completion photo",
+        url: `/api/files/submission-photo/${index + 1}/`,
+      }));
+    }
     if (method === "POST" || method === "PATCH")
       return route.fulfill({ status: 201, json: report });
     if (method === "DELETE") return route.fulfill({ status: 204 });
@@ -237,7 +531,10 @@ test("Telegram login opens the live Mini App without sample accounts", async ({
   ).toBeVisible();
   await expect(page.locator(".cp-profile")).toHaveText("Алексей Смирнов");
   await expect(page.locator(".cp-avatar")).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("name-header.png"), fullPage: true });
+  await page.screenshot({
+    path: info.outputPath("name-header.png"),
+    fullPage: true,
+  });
   await page.locator(".cp-profile").click();
   await expect(
     page.locator(".cp-account").getByText("Алексей Смирнов", { exact: true }),
@@ -255,38 +552,79 @@ test("Telegram login opens the live Mini App without sample accounts", async ({
   ).toBe(true);
 });
 
-test("new staff confirm their phone in the Mini App and register a username", async ({ page }, info) => {
+test("new staff confirm their phone in the Mini App and register a username", async ({
+  page,
+}, info) => {
   await setup(page, { newUser: true });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Регистрация сотрудника" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Начать работу" })).toBeDisabled();
-  await expect(page.getByLabel("Номер телефона", { exact: true })).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("registration.png"), fullPage: true });
+  await expect(
+    page.getByRole("heading", { name: "Регистрация сотрудника" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Начать работу" }),
+  ).toBeDisabled();
+  await expect(page.getByLabel("Номер телефона", { exact: true })).toHaveCount(
+    0,
+  );
+  await page.screenshot({
+    path: info.outputPath("registration.png"),
+    fullPage: true,
+  });
   await page.getByLabel("Логин", { exact: true }).fill("new_staff");
-  await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Телефон подтверждён через Telegram.");
-  await expect(page.getByLabel("Номер телефона", { exact: true })).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Подтвердить телефон Telegram", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Телефон подтверждён через Telegram.",
+  );
+  await expect(page.getByLabel("Номер телефона", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(page.getByText("9991234567", { exact: false })).toHaveCount(0);
-  const sent = page.waitForRequest((r) => r.url().endsWith("/telegram/telegram/") && Boolean(r.postDataJSON().username));
+  const sent = page.waitForRequest(
+    (r) =>
+      r.url().endsWith("/telegram/telegram/") &&
+      Boolean(r.postDataJSON().username),
+  );
   await page.getByRole("button", { name: "Начать работу" }).click();
-  expect((await sent).postDataJSON()).toEqual({ initData: "signed-telegram-test-data", username: "new_staff", phone_number: "9991234567" });
-  await expect(page.getByRole("heading", { name: "Current shift" })).toBeVisible();
+  expect((await sent).postDataJSON()).toEqual({
+    initData: "signed-telegram-test-data",
+    username: "new_staff",
+    phone_number: "9991234567",
+  });
+  await expect(
+    page.getByRole("heading", { name: "Current shift" }),
+  ).toBeVisible();
 });
 
-test("cancelled contact sharing keeps registration disabled and allows retry", async ({ page }) => {
+test("cancelled contact sharing keeps registration disabled and allows retry", async ({
+  page,
+}) => {
   await setup(page, { newUser: true, contactShared: false });
   await page.goto("/");
-  await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Вы не поделились номером");
-  await expect(page.getByRole("button", { name: "Начать работу" })).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Подтвердить телефон Telegram", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Вы не поделились номером",
+  );
+  await expect(
+    page.getByRole("button", { name: "Начать работу" }),
+  ).toBeDisabled();
   await page.evaluate(() => {
     window.Telegram!.WebApp.requestContact = (callback) => callback(true);
   });
-  await page.getByRole("button", { name: "Подтвердить телефон Telegram", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Начать работу" })).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Подтвердить телефон Telegram", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Начать работу" }),
+  ).toBeEnabled();
 });
 
-test("equipment categories, rows and details use their matching device icons", async ({ page }, info) => {
+test("equipment categories, rows and details use their matching device icons", async ({
+  page,
+}, info) => {
   await setup(page);
   const categories = [
     ["stations", "Места", "devices-pc"],
@@ -297,20 +635,36 @@ test("equipment categories, rows and details use their matching device icons", a
     ["monitors", "Мониторы", "device-desktop"],
     ["playstations", "PlayStation", "device-gamepad-2"],
   ];
-  await page.route(/\/api\/(pcs|mice|keyboards|headsets|monitors|playstations)\/$/, (route) => route.fulfill({ json: [{ id: 1, model: "Test device", serial_number: "SN-1" }] }));
+  await page.route(
+    /\/api\/(pcs|mice|keyboards|headsets|monitors|playstations)\/$/,
+    (route) =>
+      route.fulfill({
+        json: [{ id: 1, model: "Test device", serial_number: "SN-1" }],
+      }),
+  );
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("button", { name: "Devices", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Devices", exact: true })
+    .click();
   for (const [resource, title, icon] of categories) {
-    const tab = page.locator(".resource-tabs").getByRole("button", { name: title, exact: true });
+    const tab = page
+      .locator(".resource-tabs")
+      .getByRole("button", { name: title, exact: true });
     await expect(tab.locator(`.tabler-icon-${icon}`)).toHaveCount(1);
     await tab.click();
-    const row = page.locator(resource === "stations" ? ".station-tile" : ".equipment-row").first();
+    const row = page
+      .locator(resource === "stations" ? ".station-tile" : ".equipment-row")
+      .first();
     await expect(row.locator(`.tabler-icon-${icon}`)).toHaveCount(1);
     await row.click();
     await expect(page.locator(`h1 .tabler-icon-${icon}`)).toBeVisible();
     await page.getByRole("button", { name: "Назад", exact: true }).click();
   }
-  await page.screenshot({ path: info.outputPath("device-icons.png"), fullPage: true });
+  await page.screenshot({
+    path: info.outputPath("device-icons.png"),
+    fullPage: true,
+  });
 });
 
 test("shift opening and closing use real endpoints and fixed opening type", async ({
@@ -345,8 +699,8 @@ test("shift opening and closing use real endpoints and fixed opening type", asyn
   await page.getByRole("button", { name: "Close shift", exact: true }).click();
   const command = await closed;
   expect(command.headers()["idempotency-key"]).toBeTruthy();
-  expect(command.postData()).toContain('name="desk_photo"');
-  expect(command.postData()).toContain('name="receipt_photo"');
+  expect(command.postData()?.match(/name="photos"/g)).toHaveLength(2);
+  expect(command.postData()).toContain('["desk","receipt"]');
   expect(command.postData()).not.toContain('name="shift_type"');
   await expect(
     page.getByRole("button", { name: "Open shift", exact: true }),
@@ -395,7 +749,7 @@ test("task submission requires evidence and stays on moderation", async ({
       r.url().endsWith("/api/tasks/task-1/submit/") && r.method() === "POST",
   );
   await page.getByRole("button", { name: "Close task", exact: true }).click();
-  expect((await sent).postData()).toContain('name="photo"');
+  expect((await sent).postData()).toContain('name="photos"');
   await expect(page.locator(".cp-review-notice")).toContainText(
     "On moderation",
   );
@@ -469,15 +823,32 @@ test("regular users can scan and download QR labels without equipment write cont
   await expect(page.getByRole("button", { name: "Изменить" })).toHaveCount(0);
   await page.getByRole("button", { name: "Показать QR-код" }).click();
   await page.getByRole("button", { name: "Скачать PNG" }).click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { testDownload?: { url: string; file_name: string } }).testDownload)).toEqual({
-    url: "https://work.example.invalid/api/device-qr/test-ticket/", file_name: "station-1-qr.png",
-  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              testDownload?: { url: string; file_name: string };
+            }
+          ).testDownload,
+      ),
+    )
+    .toEqual({
+      url: "https://work.example.invalid/api/device-qr/test-ticket/",
+      file_name: "station-1-qr.png",
+    });
 });
 
-test("QR browser fallback saves a real PNG attachment without an API token", async ({ page }) => {
+test("QR browser fallback saves a real PNG attachment without an API token", async ({
+  page,
+}) => {
   await setup(page);
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("button", { name: "Devices", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Devices", exact: true })
+    .click();
   await page.getByRole("button", { name: "Сканировать QR" }).click();
   await page.getByRole("button", { name: "Показать QR-код" }).click();
   await page.evaluate(() => {
@@ -492,22 +863,34 @@ test("QR browser fallback saves a real PNG attachment without an API token", asy
   expect(await readFile((await download.path())!)).toEqual(photo);
 });
 
-test("a failed QR download offers retry and keeps the device preview", async ({ page }) => {
+test("a failed QR download offers retry and keeps the device preview", async ({
+  page,
+}) => {
   await setup(page);
   let attempts = 0;
   await page.route("**/api/stations/1/qr-download/", (route) => {
     attempts += 1;
     return attempts === 1
-      ? route.fulfill({ status: 503, json: { detail: "Скачивание временно недоступно" } })
+      ? route.fulfill({
+          status: 503,
+          json: { detail: "Скачивание временно недоступно" },
+        })
       : route.fallback();
   });
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("button", { name: "Devices", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Devices", exact: true })
+    .click();
   await page.getByRole("button", { name: "Сканировать QR" }).click();
   await page.getByRole("button", { name: "Показать QR-код" }).click();
   await page.getByRole("button", { name: "Скачать PNG" }).click();
-  await expect(page.getByRole("alert")).toContainText("Скачивание временно недоступно");
-  await expect(page.getByRole("img", { name: "QR-код: Место 12" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(
+    "Скачивание временно недоступно",
+  );
+  await expect(
+    page.getByRole("img", { name: "QR-код: Место 12" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Скачать PNG" }).click();
   await expect.poll(() => attempts).toBe(2);
   await expect(page.getByRole("alert")).toHaveCount(0);

@@ -18,10 +18,10 @@ from users.phones import matching_staff_numbers
 from api.serializers import StaffPhoneField
 from . import services
 from .commands import idempotent_command
-from .models import Shift, Task, TaskSubmission
+from .models import Shift, Task, TaskSubmission, TaskSubmissionPhoto
 from .permissions import visible_tasks
 from .presentation import task_data, workspace_data
-from .serializers import CloseShiftSerializer, CreateTaskSerializer, ExpenseSerializer, OpenShiftSerializer, ReviewTaskSerializer, SubmitTaskSerializer
+from .serializers import CloseShiftSerializer, CreateTaskSerializer, ExpenseSerializer, OpenShiftSerializer, PhotoSettingsSerializer, ReviewTaskSerializer, SubmitTaskSerializer
 
 
 def validated(serializer_class, request):
@@ -33,6 +33,13 @@ def validated(serializer_class, request):
 @api_view(['GET'])
 def workspace(request):
     return Response(workspace_data(request.user))
+
+
+@api_view(['POST'])
+@idempotent_command
+def photo_settings(request):
+    settings = services.save_photo_settings(request.user, validated(PhotoSettingsSerializer, request))
+    return Response({'reportFields': settings.report_fields, 'version': settings.version})
 
 
 @api_view(['GET'])
@@ -76,7 +83,7 @@ class TaskViewSet(viewsets.GenericViewSet):
         return {'submit': SubmitTaskSerializer, 'review': ReviewTaskSerializer}.get(self.action, CreateTaskSerializer)
 
     def get_queryset(self):
-        return visible_tasks(self.request.user, Task.objects.prefetch_related('submissions'))
+        return visible_tasks(self.request.user, Task.objects.prefetch_related('submissions__photos'))
 
     def list(self, request):
         return Response([task_data(t) for t in self.get_queryset()])
@@ -116,7 +123,10 @@ def expense(request):
 
 @api_view(['GET'])
 def private_file(request, kind, pk):
-    if kind in ['reference', 'submission']:
+    if kind == 'submission-photo':
+        photo = get_object_or_404(TaskSubmissionPhoto.objects.filter(submission__task__in=visible_tasks(request.user, Task.objects.all())), pk=pk)
+        image = photo.image
+    elif kind in ['reference', 'submission']:
         if kind == 'reference':
             task = get_object_or_404(visible_tasks(request.user, Task.objects.all()), pk=pk)
             image = task.reference_photo
