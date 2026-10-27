@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
+from django.utils.formats import number_format
 from rest_framework.exceptions import APIException, PermissionDenied
 
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
@@ -11,7 +12,7 @@ from .photos import uploaded_photos, validate_photos
 
 class Conflict(APIException):
     status_code = 409
-    default_detail = 'This record changed. Refresh and try again.'
+    default_detail = 'Данные изменились. Обновите экран и повторите попытку.'
 
 
 def lock_register():
@@ -21,10 +22,10 @@ def lock_register():
 
 def own_shift(user):
     if role(user) != 'admin':
-        raise PermissionDenied('Only administrators can operate shifts.')
+        raise PermissionDenied('Работать со сменами могут только администраторы.')
     shift = Shift.objects.filter(closed_at__isnull=True).first()
     if not shift or shift.admin_id != user.pk:
-        raise Conflict('You must have your own open shift.')
+        raise Conflict('Сначала откройте свою смену.')
     return shift
 
 
@@ -36,12 +37,12 @@ def event(user, title, description='', kind='shift', task=None):
 def open_shift(user, data):
     lock_register()
     if role(user) != 'admin':
-        raise PermissionDenied('Only administrators can open shifts.')
+        raise PermissionDenied('Открывать смены могут только администраторы.')
     if Shift.objects.filter(closed_at__isnull=True).exists():
-        raise Conflict('The previous shift is still open.')
+        raise Conflict('Предыдущая смена ещё открыта.')
     settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     shift = Shift.objects.create(admin=user, photo_requirements=settings.report_fields, **data)
-    event(user, 'Shift opened', shift.get_shift_type_display())
+    event(user, 'Смена открыта', shift.get_shift_type_display())
     return shift
 
 
@@ -50,11 +51,11 @@ def close_shift(user, pk, data):
     lock_register()
     shift = own_shift(user)
     if str(shift.pk) != str(pk):
-        raise Conflict('This is no longer your active shift.')
+        raise Conflict('Эта смена больше не является вашей текущей сменой.')
     photos = uploaded_photos(data, [
-        ('desk_photo', 'desk', 'Administrator desk'),
-        ('receipt_photo', 'receipt', 'Closing receipt'),
-        ('additional_photo', 'additional', 'Additional photo'),
+        ('desk_photo', 'desk', 'Стол администратора'),
+        ('receipt_photo', 'receipt', 'Чек закрытия смены'),
+        ('additional_photo', 'additional', 'Дополнительное фото'),
     ])
     validate_photos(photos, 'named', shift.photo_requirements)
     report = Report.objects.create(
@@ -68,7 +69,7 @@ def close_shift(user, pk, data):
     shift.save(update_fields=['report', 'closed_at'])
     # Unfinished shift assignments remain actionable on the recipient's next shift.
     Task.objects.filter(shift=shift).exclude(status=Task.Status.ACCEPTED).update(shift=None)
-    event(user, 'Shift closed', f'Total: {report.cash + report.cards + report.spb} ₽')
+    event(user, 'Смена закрыта', f'Итого: {number_format(report.cash + report.cards + report.spb, decimal_pos=2, force_grouping=True)} ₽')
     return shift
 
 
@@ -80,7 +81,7 @@ def add_expense(user, data):
     ShiftExpense.objects.create(shift=shift, expense=expense)
     if data.get('photo'):
         ExpensePhoto.objects.create(expense=expense, image=data['photo'])
-    event(user, 'Expense recorded', f"{expense.amount} ₽ · {expense.info}", kind='expense')
+    event(user, 'Расход сохранён', f"{number_format(expense.amount, decimal_pos=2, force_grouping=True)} ₽ · {expense.info}", kind='expense')
     return expense
 
 
@@ -91,13 +92,13 @@ def create_task(user, data):
     data['assignee'] = assignee
     actor_role, target_role = role(user), role(assignee)
     if not assignee.is_active or user == assignee or actor_role == 'admin' or target_role == 'superuser':
-        raise PermissionDenied('Choose an administrator or manager you can assign tasks to.')
+        raise PermissionDenied('Выберите администратора или управляющего, которому можно назначить задачу.')
     shift = Shift.objects.filter(closed_at__isnull=True).first()
     if actor_role == 'manager':
         if target_role != 'admin' or not shift or shift.admin_id != assignee.pk:
-            raise PermissionDenied('Managers can assign tasks to the current shift administrator.')
+            raise PermissionDenied('Управляющий может назначать задачи администратору текущей смены.')
     task = Task.objects.create(creator=user, shift=shift if shift and shift.admin_id == assignee.pk else None, **data)
-    event(user, 'Task assigned', task.title, kind='task', task=task)
+    event(user, 'Задача назначена', task.title, kind='task', task=task)
     return task
 
 
@@ -107,21 +108,21 @@ def submit_task(user, pk, data):
     lock_register()
     task = Task.objects.select_for_update().get(pk=pk)
     if role(user) == 'superuser' or task.assignee_id != user.pk:
-        raise PermissionDenied('Only the assigned employee can complete this task.')
+        raise PermissionDenied('Выполнить задачу может только назначенный сотрудник.')
     if role(user) == 'admin':
         shift = own_shift(user)
         if task.shift_id and task.shift_id != shift.pk:
-            raise Conflict('This task belongs to another shift.')
+            raise Conflict('Эта задача относится к другой смене.')
     if task.status not in [Task.Status.ACTIVE, Task.Status.REJECTED]:
-        raise Conflict('This task has already been submitted.')
+        raise Conflict('Эта задача уже отправлена на проверку.')
     previous = task.submissions.first()
-    photos = uploaded_photos(data, [('photo', '', 'Completion photo')])
+    photos = uploaded_photos(data, [('photo', '', 'Фото выполнения')])
     if data.get('photo'):
         photos[-1]['legacy'] = True
     available = {}
     if previous:
         if previous.photo:
-            available[f'legacy-{previous.pk}'] = {'image': previous.photo.name, 'slot': '', 'label': 'Completion photo', 'legacy': True}
+            available[f'legacy-{previous.pk}'] = {'image': previous.photo.name, 'slot': '', 'label': 'Фото выполнения', 'legacy': True}
         for image in previous.photos.all():
             available[str(image.pk)] = {'image': image.image.name, 'slot': image.slot, 'label': image.label}
     retained = data.get('retained_photos')
@@ -129,10 +130,10 @@ def submit_task(user, pk, data):
         retained = list(available) if not photos else []
     if any(pk not in available for pk in retained):
         from rest_framework.exceptions import ValidationError
-        raise ValidationError({'retained_photos': 'Only photos from your latest submission can be retained.'})
+        raise ValidationError({'retained_photos': 'Можно сохранить только фотографии из последнего выполнения этой задачи.'})
     photos.extend(dict(available[pk]) for pk in retained)
     if task.requires_photo and not photos:
-        raise Conflict('A completion photo is required.')
+        raise Conflict('Необходимо фото выполнения.')
     mode = 'single' if task.requires_photo and task.photo_mode == 'optional' else task.photo_mode
     validate_photos(photos, mode, task.photo_requirements)
     task.submission_version += 1
@@ -146,22 +147,22 @@ def submit_task(user, pk, data):
     task.rejection_reason = ''
     task.save(update_fields=['submission_version', 'status', 'submitted_at', 'rejection_reason'])
     TelegramNotification.objects.create(submission=submission, recipient=task.creator, next_attempt_at=timezone.now())
-    event(user, 'Task on moderation', task.title, kind='task', task=task)
+    event(user, 'Задача на проверке', task.title, kind='task', task=task)
     return task
 
 
 @transaction.atomic
 def save_photo_settings(user, data):
     if role(user) not in ['manager', 'superuser']:
-        raise PermissionDenied('Only managers and superusers can configure report photos.')
+        raise PermissionDenied('Настраивать фотографии отчёта могут только управляющие и суперпользователи.')
     lock_register()
     settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     if data['version'] != settings.version:
-        raise Conflict('Photo settings changed. Reopen settings and try again.')
+        raise Conflict('Настройки фотографий изменились. Откройте настройки заново и повторите попытку.')
     settings.report_fields = data['report_fields']
     settings.version += 1
     settings.save(update_fields=['report_fields', 'version'])
-    event(user, 'Report photo requirements updated', 'Applies to shifts opened from now on.')
+    event(user, 'Требования к фото отчёта обновлены', 'Применяется к сменам, открытым после изменения настроек.')
     return settings
 
 
@@ -169,9 +170,9 @@ def save_photo_settings(user, data):
 def review_task(user, pk, data):
     task = Task.objects.select_for_update().get(pk=pk)
     if task.assignee_id == user.pk or not (user.is_superuser or (user.is_staff and task.creator_id == user.pk)):
-        raise PermissionDenied('Only the assigning manager or superuser can review this task.')
+        raise PermissionDenied('Проверить задачу может только её постановщик или суперпользователь.')
     if task.status != Task.Status.MODERATION or task.submission_version != data['version']:
-        raise Conflict('This task is not awaiting moderation.')
+        raise Conflict('Эта задача сейчас не ожидает проверки.')
     submission = task.submissions.get(version=task.submission_version)
     submission.reviewed_by = user
     submission.reviewed_at = timezone.now()
@@ -182,5 +183,5 @@ def review_task(user, pk, data):
     task.rejection_reason = submission.reason
     task.accepted_at = submission.reviewed_at if data['accept'] else None
     task.save(update_fields=['status', 'rejection_reason', 'accepted_at'])
-    event(user, 'Task accepted' if data['accept'] else 'Task needs rework', task.title, kind='task', task=task)
+    event(user, 'Задача принята' if data['accept'] else 'Задача возвращена на доработку', task.title, kind='task', task=task)
     return task

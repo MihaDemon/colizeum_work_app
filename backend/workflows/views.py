@@ -167,7 +167,7 @@ def bind_contact(request):
     # Only the bot service may attest that Telegram supplied the user's own contact.
     supplied = request.headers.get('X-Bot-Service-Token', '')
     if not settings.BOT_SERVICE_TOKEN or not hmac.compare_digest(supplied, settings.BOT_SERVICE_TOKEN):
-        raise PermissionDenied('Invalid bot credentials.')
+        raise PermissionDenied('Неверные данные доступа бота.')
     data = validated(ContactSerializer, request)
     with transaction.atomic():
         matches = matching_staff_numbers(data['phone_number'])
@@ -175,17 +175,17 @@ def bind_contact(request):
             raise ValidationError({'phone_number': 'Номер повторяется в списке сотрудников. Обратитесь к суперпользователю.'})
         contact = get_object_or_404(AdminUser.objects.select_for_update(), pk__in=matches)
         if contact.telegram_id and contact.telegram_id != data['telegram_id']:
-            raise PermissionDenied('This phone is already linked to another Telegram account.')
+            raise PermissionDenied('Этот телефон уже связан с другим аккаунтом Telegram.')
         other = AdminUser.objects.filter(telegram_id=data['telegram_id']).exclude(pk=contact.pk).exists()
         linked = get_user_model().objects.select_for_update().filter(phone_number=contact).first()
         foreign_user = get_user_model().objects.filter(telegram_id=data['telegram_id']).exclude(phone_number=contact).exists()
         if other or foreign_user or (linked and linked.telegram_id and linked.telegram_id != data['telegram_id']):
-            raise PermissionDenied('This Telegram account or phone is already linked.')
+            raise PermissionDenied('Этот аккаунт Telegram или телефон уже связан с другим пользователем.')
         contact.telegram_id = data['telegram_id']
         contact.save(update_fields=['telegram_id'])
         if linked:
             if not linked.is_active:
-                raise PermissionDenied('This account is disabled.')
+                raise PermissionDenied('Учётная запись отключена.')
             linked.telegram_id = data['telegram_id']
             linked.save(update_fields=['telegram_id'])
     return Response({'verified': True})

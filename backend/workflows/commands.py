@@ -19,7 +19,7 @@ def idempotent_command(handler):
         try:
             key = uuid.UUID(value)
         except (ValueError, AttributeError):
-            raise ValidationError({'detail': 'Idempotency-Key must be a UUID.'})
+            raise ValidationError({'detail': 'Ключ повторного запроса должен иметь формат UUID.'})
         digest = hashlib.sha256(request.path.encode())
         for name in sorted(request.data):
             digest.update(name.encode())
@@ -41,7 +41,7 @@ def idempotent_command(handler):
             receipt = CommandReceipt.objects.filter(user=request.user, key=key).first()
             if receipt:
                 if receipt.fingerprint != fingerprint:
-                    raise Conflict('This retry key was already used for a different command.')
+                    raise Conflict('Этот ключ повторного запроса уже использован для другого действия.')
                 return Response(receipt.response, status=receipt.status_code)
             response = handler(*args, **kwargs)
             if response.status_code < 400:

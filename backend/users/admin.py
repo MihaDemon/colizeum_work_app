@@ -21,7 +21,7 @@ class UserAdmin(BaseUserAdmin):
         'is_staff',
     )
     fieldsets = (
-        ('Personal Info', {
+        ('Личные данные', {
             'fields': (
                 'username',
                 'phone_number',
@@ -30,14 +30,14 @@ class UserAdmin(BaseUserAdmin):
                 'password'
             ),
         }),
-        ('Permissions', {
+        ('Права доступа', {
             'fields': (
                 'is_active',
                 'is_staff',
                 'is_superuser'
             ),
         }),
-        ('Important Dates', {
+        ('Важные даты', {
             'fields': (
                 'date_joined',
                 'last_login'
@@ -45,7 +45,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
     add_fieldsets = (
-        ('Personal Info', {
+        ('Личные данные', {
             'fields': (
                 'username',
                 'phone_number',
@@ -55,7 +55,7 @@ class UserAdmin(BaseUserAdmin):
                 'password2'
             ),
         }),
-        ('Permissions', {
+        ('Права доступа', {
             'fields': (
                 'is_active',
                 'is_staff',
@@ -99,3 +99,7 @@ class AdminUserAdmin(admin.ModelAdmin):
         linked.update(first_name=obj.first_name, last_name=obj.last_name)
         if change and 'role' in form.changed_data:
             linked.filter(is_superuser=False).update(is_staff=obj.role == 'manager')
+
+admin.site.site_header = 'COLIZEUM — управление'
+admin.site.site_title = 'COLIZEUM'
+admin.site.index_title = 'Управление приложением'

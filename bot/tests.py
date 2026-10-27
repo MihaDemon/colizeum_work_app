@@ -6,17 +6,18 @@ import bot
 
 
 class ContactTests(unittest.IsolatedAsyncioTestCase):
-    async def test_start_only_offers_launch_and_removes_old_contact_keyboard(self):
+    async def test_start_offers_a_single_russian_launch_message(self):
         message = SimpleNamespace(answer=AsyncMock())
         with patch.dict('os.environ', {'WEBAPP_URL': 'https://test.invalid'}):
             await bot.start(message)
-        welcome, launch = message.answer.await_args_list
-        self.assertTrue(welcome.kwargs['reply_markup'].remove_keyboard)
+        message.answer.assert_awaited_once()
+        launch = message.answer.await_args
         keyboard = launch.kwargs['reply_markup'].inline_keyboard
         self.assertEqual(len(keyboard), 1)
         self.assertEqual(len(keyboard[0]), 1)
         self.assertEqual(keyboard[0][0].web_app.url, 'https://test.invalid')
-        self.assertNotIn('Verify', welcome.args[0] + launch.args[0])
+        self.assertIn('смены, задачи и оборудование клуба', launch.args[0])
+        self.assertEqual(keyboard[0][0].text, 'Открыть Colizeum Work')
 
     async def test_forwarded_contact_is_never_attested(self):
         message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=102, phone_number='+79991234567'), answer=AsyncMock(), delete=AsyncMock())

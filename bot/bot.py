@@ -8,8 +8,13 @@ import aiohttp
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.enums import ChatType
 from aiogram.filters import CommandStart
-from aiogram.types import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup,
-                           MenuButtonWebApp, ReplyKeyboardRemove, WebAppInfo)
+from aiogram.types import (
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    MenuButtonWebApp,
+    WebAppInfo
+)
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
@@ -18,16 +23,19 @@ dp = Dispatcher()
 
 def launch_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text='Открыть Colizeum Work', web_app=WebAppInfo(url=os.environ['WEBAPP_URL']))
+        InlineKeyboardButton(
+            text='Открыть Colizeum Work',
+            web_app=WebAppInfo(url=os.environ['WEBAPP_URL'])
+        )
     ]])
 
 
 @dp.message(CommandStart(), F.chat.type == ChatType.PRIVATE)
 async def start(message: types.Message):
-    # Remove the old contact keyboard for staff who used the previous bot version.
-    await message.answer('Colizeum Work — смены, задачи и оборудование клуба.',
-                         reply_markup=ReplyKeyboardRemove())
-    await message.answer('Откройте приложение для входа и регистрации:', reply_markup=launch_keyboard())
+    await message.answer(
+        'Colizeum Work — смены, задачи и оборудование клуба.',
+        reply_markup=launch_keyboard()
+    )
 
 
 @dp.message(F.contact, F.chat.type == ChatType.PRIVATE)
@@ -59,8 +67,8 @@ async def main():
     if not os.environ['WEBAPP_URL'].startswith('https://'):
         raise RuntimeError('WEBAPP_URL must be a public HTTPS URL.')
     async with Bot(token=os.environ['TELEGRAM_BOT_TOKEN']) as bot:
-        await bot.set_my_commands([BotCommand(command='start', description='Open Colizeum Work')])
-        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text='Work', web_app=WebAppInfo(url=os.environ['WEBAPP_URL'])))
+        await bot.set_my_commands([BotCommand(command='start', description='Открыть рабочее приложение')])
+        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text='Работа', web_app=WebAppInfo(url=os.environ['WEBAPP_URL'])))
         # Polling intentionally preserves updates; only run one bot process per token.
         await dp.start_polling(bot)
 

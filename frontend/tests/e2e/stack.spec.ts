@@ -93,78 +93,80 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
   const owner = await session(browser, 91003);
   try {
     await manager.page
-      .getByRole("button", { name: "More", exact: true })
+      .getByRole("button", { name: "Ещё", exact: true })
       .click();
     await manager.page
-      .getByRole("button", { name: "Report photos", exact: true })
+      .getByRole("button", { name: "Фотографии отчёта", exact: true })
       .click();
     await manager.page
-      .getByLabel("Photo name 1", { exact: true })
+      .getByLabel("Название фотографии 1", { exact: true })
       .fill("Front desk");
     await manager.page
-      .getByLabel("Photo name 3", { exact: true })
+      .getByLabel("Название фотографии 3", { exact: true })
       .fill("Gaming hall");
-    await manager.page.getByLabel("Required photo 3", { exact: true }).check();
     await manager.page
-      .getByRole("button", { name: "Save photo requirements", exact: true })
+      .getByLabel("Обязательное фото 3", { exact: true })
+      .check();
+    await manager.page
+      .getByRole("button", { name: "Сохранить требования к фото", exact: true })
       .click();
     await expect(manager.page.getByRole("status")).toContainText(
-      "Report photo requirements saved",
+      "Требования к фотографиям отчёта сохранены",
     );
     await admin.page.reload();
     await admin.page
-      .getByRole("button", { name: "Open shift", exact: true })
+      .getByRole("button", { name: "Открыть смену", exact: true })
       .click();
-    await admin.page.getByRole("radio", { name: /Night shift/ }).check();
+    await admin.page.getByRole("radio", { name: /Ночная смена/ }).check();
     await admin.page
-      .getByRole("button", { name: "Open shift", exact: true })
+      .getByRole("button", { name: "Открыть смену", exact: true })
       .click();
     await expect(
-      admin.page.getByRole("button", { name: "Close shift", exact: true }),
+      admin.page.getByRole("button", { name: "Закрыть смену", exact: true }),
     ).toBeVisible();
     await manager.page.reload();
     await manager.page
-      .getByRole("button", { name: "Create task", exact: true })
+      .getByRole("button", { name: "Создать задачу", exact: true })
       .click();
     await manager.page
-      .getByLabel("Task title", { exact: true })
+      .getByLabel("Название задачи", { exact: true })
       .fill("Stack clean desk");
     await manager.page
-      .getByLabel("Task instructions", { exact: true })
+      .getByLabel("Инструкции к задаче", { exact: true })
       .fill("Clean desk and attach proof");
     await manager.page
-      .getByLabel("Task photo requirements", { exact: true })
+      .getByLabel("Требования к фото задачи", { exact: true })
       .selectOption("named");
     for (const [index, label] of [
       "Before cleaning",
       "After cleaning",
     ].entries()) {
       await manager.page
-        .getByRole("button", { name: "Add photo field", exact: true })
+        .getByRole("button", { name: "Добавить поле для фото", exact: true })
         .click();
       await manager.page
-        .getByLabel(`Photo name ${index + 1}`, { exact: true })
+        .getByLabel(`Название фотографии ${index + 1}`, { exact: true })
         .fill(label);
     }
     await manager.page
-      .getByRole("button", { name: "Assign task", exact: true })
+      .getByRole("button", { name: "Назначить задачу", exact: true })
       .click();
     await expect(
-      manager.page.getByRole("heading", { name: "Tasks", exact: true }),
+      manager.page.getByRole("heading", { name: "Задачи", exact: true }),
     ).toBeVisible();
     await admin.page.reload();
     await task(admin.page, "Stack clean desk");
     await evidence(admin.page, "Before cleaning");
     await evidence(admin.page, "After cleaning");
     await admin.page
-      .getByRole("button", { name: "Close task", exact: true })
+      .getByRole("button", { name: "Закрыть задачу", exact: true })
       .click();
     await expect(admin.page.locator(".cp-review-notice")).toContainText(
-      "On moderation",
+      "На проверке",
     );
     await manager.page.reload();
     await manager.page
-      .getByRole("button", { name: "Assigned by me", exact: true })
+      .getByRole("button", { name: "Поставленные мной", exact: true })
       .click();
     await task(manager.page, "Stack clean desk");
     await expect(
@@ -174,87 +176,92 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
       manager.page.getByRole("img", { name: "After cleaning", exact: true }),
     ).toBeVisible();
     await manager.page
-      .getByRole("button", { name: "Reject task", exact: true })
+      .getByRole("button", { name: "Отклонить задачу", exact: true })
       .click();
     await manager.page
-      .getByPlaceholder("Give the administrator a clear reason…")
+      .getByPlaceholder("Объясните, что администратору нужно исправить…")
       .fill("Clean the corners too");
     await manager.page
-      .getByRole("button", { name: "Return for rework", exact: true })
+      .getByRole("button", { name: "Вернуть на доработку", exact: true })
       .click();
     await expect(manager.page.locator(".cp-rework")).toContainText(
       "Clean the corners too",
     );
     await admin.page.reload();
     await task(admin.page, "Stack clean desk");
-    await admin.page.getByLabel("Completion note").fill("Corners cleaned");
     await admin.page
-      .getByRole("button", { name: "Close task", exact: true })
+      .getByLabel("Комментарий к выполнению")
+      .fill("Corners cleaned");
+    await admin.page
+      .getByRole("button", { name: "Закрыть задачу", exact: true })
       .click();
     await expect(admin.page.locator(".cp-review-notice")).toBeVisible();
     await manager.page.reload();
     await manager.page
-      .getByRole("button", { name: "Assigned by me", exact: true })
+      .getByRole("button", { name: "Поставленные мной", exact: true })
       .click();
     await task(manager.page, "Stack clean desk");
     await manager.page
-      .getByRole("button", { name: "Accept task", exact: true })
+      .getByRole("button", { name: "Принять задачу", exact: true })
       .click();
     await expect(
-      manager.page.getByRole("heading", { name: "Tasks", exact: true }),
+      manager.page.getByRole("heading", { name: "Задачи", exact: true }),
     ).toBeVisible();
     await admin.page.reload();
     await expect(
       admin.page.getByRole("button", { name: /Stack clean desk/ }),
     ).toHaveCount(0);
     await admin.page
-      .getByRole("button", { name: "Add expense", exact: true })
+      .getByRole("button", { name: "Добавить расход", exact: true })
       .click();
-    await admin.page.getByLabel("Expense amount", { exact: true }).fill("50");
+    await admin.page.getByLabel("Сумма расхода", { exact: true }).fill("50");
     await admin.page
-      .getByLabel("Expense description", { exact: true })
+      .getByLabel("Описание расхода", { exact: true })
       .fill("Cleaning supplies");
     await admin.page
-      .getByRole("button", { name: "Record expense", exact: true })
+      .getByRole("button", { name: "Сохранить расход", exact: true })
       .click();
     await expect(admin.page.getByText("950 ₽", { exact: true })).toBeVisible();
     await admin.page
-      .getByRole("button", { name: "Close shift", exact: true })
+      .getByRole("button", { name: "Закрыть смену", exact: true })
       .click();
     await expect(admin.page.locator(".cp-closing-shift")).toContainText(
-      "Night shift",
+      "Ночная смена",
     );
-    await admin.page.getByLabel("Cash total", { exact: true }).fill("100");
-    await admin.page.getByLabel("Card total", { exact: true }).fill("200");
-    await admin.page.getByLabel("SBP total", { exact: true }).fill("300");
+    await admin.page.getByLabel("Наличные: сумма", { exact: true }).fill("100");
+    await admin.page.getByLabel("Карта: сумма", { exact: true }).fill("200");
+    await admin.page.getByLabel("СБП: сумма", { exact: true }).fill("300");
     await evidence(admin.page, "Front desk");
-    await evidence(admin.page, "Closing receipt");
+    await evidence(admin.page, "Чек закрытия смены");
     await evidence(admin.page, "Gaming hall");
     await admin.page
-      .getByRole("button", { name: "Close shift", exact: true })
+      .getByRole("button", { name: "Закрыть смену", exact: true })
       .click();
     await expect(
-      admin.page.getByRole("button", { name: "Open shift", exact: true }),
+      admin.page.getByRole("button", { name: "Открыть смену", exact: true }),
     ).toBeVisible();
     await manager.page.reload();
     await expect(
-      manager.page.getByText("1,050 ₽", { exact: true }),
+      manager.page.getByText("1\u00a0050 ₽", { exact: true }),
     ).toBeVisible();
     await expect(
-      manager.page.getByRole("button", { name: "Shift history", exact: true }),
+      manager.page.getByRole("button", { name: "История смен", exact: true }),
     ).toHaveCount(0);
     await manager.page
-      .getByRole("button", { name: "More", exact: true })
+      .getByRole("button", { name: "Ещё", exact: true })
       .click();
     await manager.page
-      .getByRole("button", { name: "Shift history", exact: true })
+      .getByRole("button", { name: "История смен", exact: true })
       .click();
     await expect(manager.page.locator(".cp-history-total")).toContainText(
       "600 ₽",
     );
     await manager.page.locator(".cp-history-row summary").click();
     await expect(
-      manager.page.getByRole("img", { name: "Closing receipt", exact: true }),
+      manager.page.getByRole("img", {
+        name: "Чек закрытия смены",
+        exact: true,
+      }),
     ).toBeVisible();
     await manager.page.screenshot({
       path: info.outputPath("real-shift-history.png"),
@@ -262,39 +269,39 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     });
     await owner.page.reload();
     await expect(
-      owner.page.getByRole("button", { name: "My tasks", exact: true }),
+      owner.page.getByRole("button", { name: "Мои задачи", exact: true }),
     ).toHaveCount(0);
     await owner.page
-      .getByRole("button", { name: "Create task", exact: true })
+      .getByRole("button", { name: "Создать задачу", exact: true })
       .click();
     await owner.page
-      .getByLabel("Task title", { exact: true })
+      .getByLabel("Название задачи", { exact: true })
       .fill("Stack management report");
     await owner.page
-      .getByLabel("Task instructions", { exact: true })
+      .getByLabel("Инструкции к задаче", { exact: true })
       .fill("Review the revenue summary");
     await owner.page
-      .getByLabel("Assign to", { exact: true })
-      .selectOption({ label: "Stack Manager · Manager" });
+      .getByLabel("Исполнитель", { exact: true })
+      .selectOption({ label: "Stack Manager · Управляющий" });
     await owner.page
-      .getByRole("button", { name: "Assign task", exact: true })
+      .getByRole("button", { name: "Назначить задачу", exact: true })
       .click();
     await expect(
-      owner.page.getByRole("heading", { name: "Tasks", exact: true }),
+      owner.page.getByRole("heading", { name: "Задачи", exact: true }),
     ).toBeVisible();
     await manager.page.reload();
     await task(manager.page, "Stack management report");
     await manager.page
-      .getByRole("button", { name: "Close task", exact: true })
+      .getByRole("button", { name: "Закрыть задачу", exact: true })
       .click();
     await expect(manager.page.locator(".cp-review-notice")).toBeVisible();
     await owner.page.reload();
     await task(owner.page, "Stack management report");
     await owner.page
-      .getByRole("button", { name: "Accept task", exact: true })
+      .getByRole("button", { name: "Принять задачу", exact: true })
       .click();
     await expect(
-      owner.page.getByRole("heading", { name: "Tasks", exact: true }),
+      owner.page.getByRole("heading", { name: "Задачи", exact: true }),
     ).toBeVisible();
   } finally {
     await admin.context.close();

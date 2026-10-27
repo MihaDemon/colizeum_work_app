@@ -17,9 +17,9 @@ export interface PhotoSettings {
   version: number;
 }
 export const defaultReportPhotoFields: PhotoRequirement[] = [
-  { id: "desk", label: "Administrator desk", required: true },
-  { id: "receipt", label: "Closing receipt", required: true },
-  { id: "additional", label: "Additional photo", required: false },
+  { id: "desk", label: "Стол администратора", required: true },
+  { id: "receipt", label: "Чек закрытия смены", required: true },
+  { id: "additional", label: "Дополнительное фото", required: false },
 ];
 
 export interface StaffMember {
@@ -151,12 +151,13 @@ export type Action =
     };
 
 export function photoFieldsError(fields: PhotoRequirement[]): string {
-  if (fields.length > 10) return "Use at most 10 photo fields.";
+  if (fields.length > 10)
+    return "Можно добавить не более 10 полей для фотографий.";
   if (fields.some((field) => !field.label.trim()))
-    return "Name every photo field.";
+    return "Укажите название каждого поля для фото.";
   const names = fields.map((field) => field.label.trim().toLowerCase());
   if (new Set(names).size !== names.length)
-    return "Use a different name for each photo field.";
+    return "Названия полей для фотографий должны различаться.";
   return "";
 }
 
@@ -165,16 +166,16 @@ export function photoEvidenceError(
   fields: PhotoRequirement[],
   photos: EvidencePhoto[],
 ): string {
-  if (photos.length > 10) return "Attach at most 10 photos.";
+  if (photos.length > 10) return "Можно прикрепить не более 10 фотографий.";
   if ((mode === "single" || mode === "multiple") && !photos.length)
-    return "Add the required completion photo before closing this task.";
+    return "Перед закрытием задачи добавьте обязательное фото выполнения.";
   if (mode === "named") {
     const missing = fields.filter(
       (field) =>
         field.required && !photos.some((photo) => photo.slot === field.id),
     );
     if (missing.length)
-      return `Add the required photos: ${missing.map((field) => field.label).join(", ")}.`;
+      return `Добавьте обязательные фотографии: ${missing.map((field) => field.label).join(", ")}.`;
   }
   return "";
 }

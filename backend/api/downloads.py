@@ -45,8 +45,8 @@ def download_device_qr(request, ticket):
         model = DEVICE_MODELS[data['kind']]
         user_id, pk = data['user'], data['pk']
     except (signing.BadSignature, KeyError, TypeError, ValueError):
-        raise Http404('Download link is invalid or expired.')
+        raise Http404('Ссылка для скачивания недействительна или срок её действия истёк.')
     if not get_user_model().objects.filter(pk=user_id, is_active=True).exists():
-        raise Http404('Download link is unavailable.')
+        raise Http404('Ссылка для скачивания недоступна.')
     device = get_object_or_404(model, pk=pk)
     return qr_png_response(device, request, attachment=True)

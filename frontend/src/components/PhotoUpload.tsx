@@ -31,10 +31,10 @@ export default function Upload({
         </strong>
         <small>
           {busy
-            ? "Reading photo…"
+            ? "Читаем фотографию…"
             : value
-              ? name || "Photo attached · Click to replace"
-              : "JPG, PNG or WebP · up to 5 MB"}
+              ? name || "Фотография добавлена · Нажмите, чтобы заменить"
+              : "JPG, PNG или WebP · до 5 МБ"}
         </small>
       </span>
       {value ? <IconCircleCheck size={21} /> : <IconUpload size={18} />}
@@ -47,12 +47,14 @@ export default function Upload({
           const file = e.target.files?.[0];
           if (!file) return;
           if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-            onError("Choose a JPG, PNG, or WebP image.");
+            onError("Выберите изображение в формате JPG, PNG или WebP.");
             e.target.value = "";
             return;
           }
           if (file.size > 5 * 1024 * 1024) {
-            onError("This photo is too large. Choose an image under 5 MB.");
+            onError(
+              "Фотография слишком большая. Выберите изображение не более 5 МБ.",
+            );
             e.target.value = "";
             return;
           }
@@ -66,7 +68,7 @@ export default function Upload({
           };
           reader.onerror = () => {
             setBusy(false);
-            onError("The photo could not be read. Please choose it again.");
+            onError("Не удалось прочитать фотографию. Выберите её ещё раз.");
           };
           reader.readAsDataURL(file);
         }}

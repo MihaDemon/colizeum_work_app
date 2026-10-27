@@ -66,7 +66,13 @@ import {
   telegram,
 } from "../lib/telegram";
 import { useDraft } from "../lib/useDraft";
-import { money, time, dateLabel } from "../lib/format";
+import {
+  money,
+  time,
+  dateLabel,
+  parseAmount,
+  validAmount,
+} from "../lib/format";
 import "./workspace.css";
 
 type View =
@@ -87,7 +93,7 @@ function usePeople() {
     person: (id: string) =>
       people.find((p) => p.id === id) || {
         id,
-        name: "Employee",
+        name: "Сотрудник",
         initials: "?",
         role: "admin" as const,
       },
@@ -114,10 +120,10 @@ function Status({ status }: { status: Task["status"] }) {
       )}
       {
         {
-          active: "To do",
-          moderation: "On moderation",
-          accepted: "Accepted",
-          rejected: "Needs rework",
+          active: "К выполнению",
+          moderation: "На проверке",
+          accepted: "Принято",
+          rejected: "На доработке",
         }[status]
       }
     </span>
@@ -213,7 +219,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     if (equipmentDraft.current.busy) return;
     if (
       equipmentDraft.current.dirty &&
-      !window.confirm("Discard your unsaved changes?")
+      !window.confirm("Выйти без сохранения изменений?")
     )
       return;
     setView(target);
@@ -225,7 +231,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   }, []);
   const back = useCallback(() => {
     if (busy) return;
-    if (dirty && !window.confirm("Discard your unsaved changes?")) return;
+    if (dirty && !window.confirm("Выйти без сохранения изменений?")) return;
     setDirty(false);
     if (form) setForm(null);
     else if (selectedTask) setSelectedTask(null);
@@ -261,8 +267,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   };
   useDraft(dirty, busy, "workspace");
   useEffect(() => {
-    document.title = "COLIZEUM Work";
-    document.documentElement.lang = "en";
+    document.title = "COLIZEUM · Рабочее приложение";
+    document.documentElement.lang = "ru";
     document.documentElement.classList.add("mini-app-page");
     const cleanup = initializeTelegram();
     return () => {
@@ -300,19 +306,19 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   );
   const taskFilters = isManager
     ? [
-        ["all", "Active"],
+        ["all", "Активные"],
         [
           "moderation",
           user.role === "manager" && taskScope === "mine"
-            ? "On moderation"
-            : "Review",
+            ? "На проверке"
+            : "На проверке",
         ],
-        ["accepted", "History"],
+        ["accepted", "История"],
       ]
     : [
-        ["all", "All"],
-        ["todo", "To do"],
-        ["moderation", "On moderation"],
+        ["all", "Все"],
+        ["todo", "К выполнению"],
+        ["moderation", "На проверке"],
       ];
   const filteredTasks = (
     filter === "accepted" ? listTasks : activeTasks
@@ -331,7 +337,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       }}
     >
       <a className="cp-skip" href="#workspace-content">
-        Skip to content
+        Перейти к содержимому
       </a>
       <header className="cp-header">
         <span className="cp-brand">
@@ -339,9 +345,9 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         </span>
         <button
           className="cp-profile"
-          aria-label={`Open more: ${user.name}`}
+          aria-label={`Открыть раздел «Ещё»: ${user.name}`}
           onClick={() => {
-            if (!dirty || window.confirm("Discard your unsaved changes?"))
+            if (!dirty || window.confirm("Выйти без сохранения изменений?"))
               navigate("more");
           }}
         >
@@ -356,7 +362,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         )}
         {busy && (
           <p role="status" className="cp-list-hint">
-            Saving…
+            Сохраняем…
           </p>
         )}
         <fieldset className="cp-workspace-controls" disabled={busy}>
@@ -387,7 +393,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
               {isMain && (
                 <>
                   <div className="cp-page-heading">
-                    <h1>{isManager ? "Tasks" : "Current shift"}</h1>
+                    <h1>{isManager ? "Задачи" : "Текущая смена"}</h1>
                     {isManager ? (
                       <button
                         className="cp-button cp-button-primary"
@@ -395,7 +401,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         onClick={() => setForm("create")}
                       >
                         <IconPlus size={18} />
-                        Create task
+                        Создать задачу
                       </button>
                     ) : (
                       <span className="cp-date">
@@ -408,9 +414,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       <section
                         className="cp-shift-summary"
                         aria-label={
-                          isManager
-                            ? "Active shift summary"
-                            : "Current shift summary"
+                          isManager ? "Активная смена" : "Текущая смена"
                         }
                       >
                         <div>
@@ -419,27 +423,27 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           >
                             <span className="cp-dot" />
                             {isManager
-                              ? "Active shift"
+                              ? "Активная смена"
                               : ownsShift
-                                ? "On shift"
-                                : "Shift in progress"}
+                                ? "На смене"
+                                : "Смена идёт"}
                           </span>
                           <h2>
                             {state.shift.type === "day"
-                              ? "Day shift"
-                              : "Night shift"}
-                            <span>from {time(state.shift.openedAt)}</span>
+                              ? "Дневная смена"
+                              : "Ночная смена"}
+                            <span>с {time(state.shift.openedAt)}</span>
                           </h2>
                           <p>
                             {person(state.shift.adminId).name}
                             {!ownsShift &&
                               !isManager &&
-                              " · Wait for this shift to close"}
+                              " · Дождитесь закрытия этой смены"}
                           </p>
                         </div>
                         {(ownsShift || isManager) && (
                           <div className="cp-cash">
-                            <span>Cash register</span>
+                            <span>Наличные в кассе</span>
                             <strong>{money(state.balance)}</strong>
                           </div>
                         )}
@@ -447,27 +451,27 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     ) : isManager ? (
                       <section
                         className="cp-shift-summary"
-                        aria-label="Active shift summary"
+                        aria-label="Активная смена"
                       >
                         <div>
-                          <h2>No active shift</h2>
-                          <p>Waiting for an administrator.</p>
+                          <h2>Нет активной смены</h2>
+                          <p>Ожидаем администратора.</p>
                         </div>
                         <div className="cp-cash">
-                          <span>Cash register</span>
+                          <span>Наличные в кассе</span>
                           <strong>{money(state.balance)}</strong>
                         </div>
                       </section>
                     ) : (
                       <section className="cp-open-shift">
-                        <h2>Ready to start?</h2>
-                        <p>The previous shift is closed.</p>
+                        <h2>Готовы начать смену?</h2>
+                        <p>Предыдущая смена закрыта.</p>
                         <button
                           className="cp-button cp-button-primary"
                           onClick={() => setForm("open")}
                         >
                           <IconDoorEnter size={18} />
-                          Open shift
+                          Открыть смену
                         </button>
                       </section>
                     )}
@@ -478,32 +482,32 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           onClick={() => setForm("expense")}
                         >
                           <IconPlus size={18} />
-                          Add expense
+                          Добавить расход
                         </button>
                         <button
                           className="cp-button cp-button-secondary"
                           onClick={() => setForm("close")}
                         >
                           <IconDoorExit size={18} />
-                          Close shift
+                          Закрыть смену
                         </button>
                       </div>
                     )}
                   </>
                   {user.role === "superuser" && (
                     <p className="cp-list-hint">
-                      Tasks for administrators and managers
+                      Задачи для администраторов и управляющих
                     </p>
                   )}
                   <section className="cp-checklist">
                     {user.role === "manager" && (
                       <div
                         className="cp-task-scope"
-                        aria-label="Task ownership"
+                        aria-label="Исполнитель и постановщик"
                       >
                         {[
-                          ["mine", "My tasks"],
-                          ["assigned", "Assigned by me"],
+                          ["mine", "Мои задачи"],
+                          ["assigned", "Поставленные мной"],
                         ].map(([scope, label]) => (
                           <button
                             key={scope}
@@ -524,13 +528,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     {!isManager && (
                       <div className="cp-section-heading">
                         <h2>
-                          Tasks
+                          Задачи
                           <span>{activeTasks.length}</span>
                         </h2>
                       </div>
                     )}
                     <div className="cp-task-toolbar">
-                      <div className="cp-tabs" aria-label="Filter tasks">
+                      <div className="cp-tabs" aria-label="Фильтр задач">
                         {taskFilters.map(([id, label]) => (
                           <button
                             key={id}
@@ -556,7 +560,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     />
                     {moderationCount > 0 && (
                       <p className="cp-list-hint">
-                        Tasks on moderation stay until accepted.
+                        Задачи остаются здесь до принятия управляющим.
                       </p>
                     )}
                   </section>
@@ -570,42 +574,42 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
               {view === "more" && (
                 <>
                   <div className="cp-page-heading">
-                    <h1>More</h1>
+                    <h1>Ещё</h1>
                   </div>
                   <div className="cp-account">
                     <div>
                       <strong>{user.name}</strong>
                       <p>
                         {user.role === "superuser"
-                          ? "Superuser"
+                          ? "Суперпользователь"
                           : isManager
-                            ? "Manager"
-                            : "Administrator"}
+                            ? "Управляющий"
+                            : "Администратор"}
                       </p>
                     </div>
                   </div>
-                  <div className="cp-menu" aria-label="More options">
+                  <div className="cp-menu" aria-label="Дополнительные разделы">
                     {[
                       {
                         id: "history" as const,
-                        label: "Shift history",
+                        label: "История смен",
                         icon: IconHistory,
                       },
                       {
                         id: "expenses" as const,
-                        label: "Expenses",
+                        label: "Расходы",
                         icon: IconWallet,
                       },
                       {
                         id: "notifications" as const,
-                        label: "Notifications",
+                        label: "Уведомления",
                         icon: IconBell,
                       },
                       ...(isManager
                         ? [
                             {
                               id: "photo-settings" as const,
-                              label: "Report photos",
+                              label: "Фотографии отчёта",
                               icon: IconCamera,
                             },
                           ]
@@ -643,22 +647,22 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                 <>
                   <button className="cp-back" onClick={back}>
                     <IconArrowLeft size={18} />
-                    Back to more
+                    Назад в «Ещё»
                   </button>
                   <div className="cp-page-heading">
-                    <h1>Expenses</h1>
+                    <h1>Расходы</h1>
                     {ownsShift && (
                       <button
                         className="cp-button cp-button-primary"
                         onClick={() => setForm("expense")}
                       >
                         <IconPlus size={18} />
-                        Add expense
+                        Добавить расход
                       </button>
                     )}
                   </div>
                   <div className="cp-register-strip">
-                    <span>Cash register</span>
+                    <span>Наличные в кассе</span>
                     <strong>{money(state.balance)}</strong>
                   </div>
                   <div className="cp-records">
@@ -677,12 +681,12 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                             <strong>−{money(expense.amount)}</strong>
                             <IconChevronDown size={16} />
                           </summary>
-                          <p>{time(expense.createdAt)} · Cash expense</p>
+                          <p>{time(expense.createdAt)} · Расход из кассы</p>
                           {expense.photo && (
                             <PrivateImage
                               className="cp-receipt"
                               src={expense.photo}
-                              alt="Expense receipt"
+                              alt="Чек расхода"
                             />
                           )}
                         </details>
@@ -691,8 +695,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       (e) => isManager || e.adminId === user.id,
                     ) && (
                       <Empty
-                        title="No expenses"
-                        text="Cash expenses will appear here."
+                        title="Расходов пока нет"
+                        text="Здесь появятся расходы из кассы."
                       />
                     )}
                   </div>
@@ -702,23 +706,23 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                 <>
                   <button className="cp-back" onClick={back}>
                     <IconArrowLeft size={18} />
-                    Back to more
+                    Назад в «Ещё»
                   </button>
                   <div className="cp-page-heading">
-                    <h1>Shift history</h1>
+                    <h1>История смен</h1>
                   </div>
                   <div className="cp-tabs cp-history-tabs">
                     <button
                       className={historyTab === "shifts" ? "cp-tab-active" : ""}
                       onClick={() => setHistoryTab("shifts")}
                     >
-                      Closed shifts
+                      Закрытые смены
                     </button>
                     <button
                       className={historyTab === "tasks" ? "cp-tab-active" : ""}
                       onClick={() => setHistoryTab("tasks")}
                     >
-                      Task history
+                      История задач
                     </button>
                   </div>
                   {historyTab === "tasks" ? (
@@ -742,18 +746,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                               <strong>
                                 {dateLabel(shift.openedAt)} ·{" "}
                                 {shift.type === "day"
-                                  ? "Day shift"
-                                  : "Night shift"}
+                                  ? "Дневная смена"
+                                  : "Ночная смена"}
                               </strong>
                               <small>
                                 {person(shift.adminId).name} ·{" "}
                                 {shift.legacy
-                                  ? "Imported report"
-                                  : `${time(shift.openedAt)} – ${shift.closedAt ? time(shift.closedAt) : "Open"}`}
+                                  ? "Архивный отчёт"
+                                  : `${time(shift.openedAt)} – ${shift.closedAt ? time(shift.closedAt) : "Открыта"}`}
                               </small>
                             </span>
                             <span className="cp-history-total">
-                              <small>Total</small>
+                              <small>Итого</small>
                               <strong>
                                 {money(
                                   (shift.cash ?? 0) +
@@ -766,13 +770,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           </summary>
                           <div className="cp-history-details">
                             <span>
-                              Cash<strong>{money(shift.cash || 0)}</strong>
+                              Наличные<strong>{money(shift.cash || 0)}</strong>
                             </span>
                             <span>
-                              Card<strong>{money(shift.cards || 0)}</strong>
+                              Карта<strong>{money(shift.cards || 0)}</strong>
                             </span>
                             <span>
-                              SBP<strong>{money(shift.sbp || 0)}</strong>
+                              СБП<strong>{money(shift.sbp || 0)}</strong>
                             </span>
                             {Object.entries(shift.photos || {}).map(
                               ([label, src]) => (
@@ -787,8 +791,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       ))
                   ) : (
                     <Empty
-                      title="No closed shifts"
-                      text="Your shift reports will appear here."
+                      title="Закрытых смен пока нет"
+                      text="Здесь появятся отчёты о сменах."
                     />
                   )}
                 </>
@@ -797,13 +801,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                 <>
                   <button className="cp-back" onClick={back}>
                     <IconArrowLeft size={18} />
-                    Back to more
+                    Назад в «Ещё»
                   </button>
                   <div className="cp-page-heading">
-                    <h1>Notifications</h1>
+                    <h1>Уведомления</h1>
                   </div>
                   <p className="cp-list-hint">
-                    Task submissions notify the assigning manager in Telegram.
+                    После выполнения задачи её постановщик получает уведомление
+                    в Telegram.
                   </p>
                   {activities.map((item) => (
                     <div className="cp-notification" key={item.id}>
@@ -818,8 +823,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   ))}
                   {!activities.length && (
                     <Empty
-                      title="No notifications"
-                      text="Task updates will appear here."
+                      title="Уведомлений пока нет"
+                      text="Здесь появятся события по задачам."
                     />
                   )}
                 </>
@@ -829,7 +834,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         </fieldset>
       </main>
       {!form && !selected && (
-        <nav className="cp-bottom-nav" aria-label="Main navigation">
+        <nav className="cp-bottom-nav" aria-label="Основная навигация">
           <button
             aria-current={isMain ? "page" : undefined}
             className={isMain ? "cp-nav-active" : ""}
@@ -840,7 +845,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
             ) : (
               <IconLayoutDashboard size={22} stroke={1.6} />
             )}
-            <span>{isManager ? "Tasks" : "Shift"}</span>
+            <span>{isManager ? "Задачи" : "Смена"}</span>
           </button>
           <button
             aria-current={view === "devices" ? "page" : undefined}
@@ -848,7 +853,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
             onClick={() => navigate("devices")}
           >
             <IconDeviceDesktop size={22} stroke={1.6} />
-            <span>Devices</span>
+            <span>Устройства</span>
           </button>
           <button
             aria-current={
@@ -864,7 +869,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
             onClick={() => navigate("more")}
           >
             <IconDots size={22} stroke={1.6} />
-            <span>More</span>
+            <span>Ещё</span>
           </button>
         </nav>
       )}
@@ -872,10 +877,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         <div className="cp-toast" role="status">
           <IconCheck size={19} />
           <span>{toast}</span>
-          <button
-            aria-label="Dismiss notification"
-            onClick={() => setToast("")}
-          >
+          <button aria-label="Закрыть уведомление" onClick={() => setToast("")}>
             <IconX size={18} />
           </button>
         </div>
@@ -895,8 +897,8 @@ function TaskList({
     <div className="cp-task-list">
       {tasks.length === 0 ? (
         <Empty
-          title="All clear here"
-          text="Tasks matching this view will appear here when assigned."
+          title="Пока нет задач"
+          text="Здесь появятся назначенные задачи, соответствующие выбранному фильтру."
         />
       ) : (
         tasks.map((task) => (
@@ -911,13 +913,13 @@ function TaskList({
                 {task.priority === "high" && (
                   <span className="cp-priority">
                     <IconFlag size={12} />
-                    High priority
+                    Высокий приоритет
                   </span>
                 )}
                 {task.requiresPhoto && (
                   <span>
                     <IconCamera size={13} />
-                    Photo required
+                    Нужна фотография
                   </span>
                 )}
               </span>
@@ -955,7 +957,7 @@ function TaskDetails({
           {
             url: task.photo,
             slot: "",
-            label: task.photoName || "Completion photo",
+            label: task.photoName || "Фото выполнения",
           },
         ]
       : []);
@@ -979,13 +981,13 @@ function TaskDetails({
     <div className="cp-form-page">
       <button className="cp-back" onClick={onBack}>
         <IconArrowLeft size={17} />
-        Back to tasks
+        Назад к задачам
       </button>
       <div className="cp-page-heading">
         <div>
           <h1>{task.title}</h1>
           <p>
-            Assigned by {person(task.managerId).name} ·{" "}
+            Постановщик: {person(task.managerId).name} ·{" "}
             {dateLabel(task.createdAt)}
           </p>
         </div>
@@ -993,13 +995,16 @@ function TaskDetails({
       </div>
       <div className="cp-detail-layout">
         <section className="cp-form-panel">
-          <h2>Task details</h2>
+          <h2>Описание задачи</h2>
           <p className="cp-description">{task.description}</p>
           {task.referencePhoto && (
             <figure className="cp-reference">
-              <PrivateImage src={task.referencePhoto} alt="Task reference" />
+              <PrivateImage
+                src={task.referencePhoto}
+                alt="Фото-пример к задаче"
+              />
               <figcaption>
-                Reference photo from {person(task.managerId).name}
+                Фото-пример от {person(task.managerId).name}
               </figcaption>
             </figure>
           )}
@@ -1012,17 +1017,17 @@ function TaskDetails({
               <IconCamera size={16} />
               {
                 {
-                  optional: "Completion photo optional",
-                  single: "One completion photo required",
-                  multiple: "Completion photos required",
-                  named: "Named completion photos",
+                  optional: "Фото выполнения необязательно",
+                  single: "Нужно одно фото выполнения",
+                  multiple: "Нужны фотографии выполнения",
+                  named: "Фотографии по указанным полям",
                 }[photoMode]
               }
             </span>
             {task.priority === "high" && (
               <span className="cp-priority">
                 <IconFlag size={15} />
-                High priority
+                Высокий приоритет
               </span>
             )}
           </div>
@@ -1030,7 +1035,7 @@ function TaskDetails({
             <div className="cp-rework">
               <IconMessageCircle size={20} />
               <div>
-                <strong>Changes requested</strong>
+                <strong>Требуется доработка</strong>
                 <p>{task.rejectionReason}</p>
               </div>
             </div>
@@ -1039,13 +1044,13 @@ function TaskDetails({
             <div className="cp-review-notice">
               <IconClock size={21} />
               <div>
-                <strong>On moderation</strong>
+                <strong>На проверке</strong>
                 <p>
                   {user.role === "admin"
-                    ? `${person(task.managerId).name} will review your work. This task stays here until it’s accepted.`
+                    ? `Задачу проверит ${person(task.managerId).name}. Она останется здесь до принятия.`
                     : user.id === task.adminId
-                      ? `${person(task.managerId).name} will review your work.`
-                      : "Review the completion photo and note, then accept or request changes."}
+                      ? `Задачу проверит ${person(task.managerId).name}.`
+                      : "Проверьте фотографии и комментарий, затем примите задачу или верните её на доработку."}
                 </p>
               </div>
             </div>
@@ -1059,7 +1064,7 @@ function TaskDetails({
             ))}
           {task.note && !canSubmit && (
             <div className="cp-completion-note">
-              <h3>Completion note</h3>
+              <h3>Комментарий к выполнению</h3>
               <p>{task.note}</p>
             </div>
           )}
@@ -1084,11 +1089,11 @@ function TaskDetails({
                     photos,
                     note,
                   },
-                  `Task sent to ${person(task.managerId).name} for review.`,
+                  `Задача отправлена на проверку: ${person(task.managerId).name}.`,
                 );
               }}
             >
-              <h2 className="cp-form-section-title">Your completion</h2>
+              <h2 className="cp-form-section-title">Выполнение задачи</h2>
               <EvidenceUploads
                 mode={photoMode}
                 fields={photoRequirements}
@@ -1097,13 +1102,13 @@ function TaskDetails({
                 onError={setError}
               />
               <label className="cp-field">
-                Completion note
-                <span className="cp-field-optional">Optional</span>
+                Комментарий к выполнению
+                <span className="cp-field-optional">Необязательно</span>
                 <textarea
                   rows={3}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  placeholder="Anything your manager should know?"
+                  placeholder="Что нужно сообщить управляющему?"
                   maxLength={2000}
                 />
               </label>
@@ -1118,11 +1123,11 @@ function TaskDetails({
                   className="cp-button cp-button-secondary"
                   onClick={onBack}
                 >
-                  Back
+                  Назад
                 </button>
                 <button className="cp-button cp-button-primary">
                   <IconCheck size={17} />
-                  Close task
+                  Закрыть задачу
                 </button>
               </div>
             </form>
@@ -1131,14 +1136,14 @@ function TaskDetails({
             <div className="cp-review-actions">
               {rejecting && (
                 <label className="cp-field">
-                  What needs to change?
+                  Что нужно исправить?
                   <textarea
                     autoFocus
                     rows={3}
                     value={reason}
                     maxLength={2000}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="Give the administrator a clear reason…"
+                    placeholder="Объясните, что администратору нужно исправить…"
                   />
                 </label>
               )}
@@ -1157,14 +1162,14 @@ function TaskDetails({
                         setError("");
                       }}
                     >
-                      Cancel
+                      Отмена
                     </button>
                     <button
                       className="cp-button cp-button-danger"
                       onClick={() => {
                         if (!reason.trim()) {
                           setError(
-                            "Add a reason so the administrator knows what to fix.",
+                            "Укажите причину, чтобы администратор знал, что исправить.",
                           );
                           return;
                         }
@@ -1177,13 +1182,13 @@ function TaskDetails({
                             version: task.submissionVersion,
                             reason,
                           },
-                          "Task returned to the administrator for rework.",
+                          "Задача возвращена администратору на доработку.",
                         );
                         setRejecting(false);
                       }}
                     >
                       <IconRefresh size={16} />
-                      Return for rework
+                      Вернуть на доработку
                     </button>
                   </>
                 ) : (
@@ -1193,7 +1198,7 @@ function TaskDetails({
                       onClick={() => setRejecting(true)}
                     >
                       <IconX size={17} />
-                      Reject task
+                      Отклонить задачу
                     </button>
                     <button
                       className="cp-button cp-button-primary"
@@ -1206,12 +1211,12 @@ function TaskDetails({
                             accept: true,
                             version: task.submissionVersion,
                           },
-                          "Task accepted. It is now saved in task history.",
+                          "Задача принята и сохранена в истории.",
                         )
                       }
                     >
                       <IconCheck size={17} />
-                      Accept task
+                      Принять задачу
                     </button>
                   </>
                 )}
@@ -1261,54 +1266,52 @@ function WorkflowForm({
   );
   const [adminId, setAdminId] = useState(assignees[0]?.id || "");
   const headings = {
-    expense: "Add expense",
-    close: "Close shift",
-    open: "Open shift",
-    create: "Create task",
+    expense: "Добавить расход",
+    close: "Закрыть смену",
+    open: "Открыть смену",
+    create: "Создать задачу",
   };
   const subtitles = {
-    expense: "Amount and reason for the expense.",
-    close: "Payment totals and closing photos.",
-    open: "Choose your shift type.",
+    expense: "Укажите сумму и причину расхода.",
+    close: "Укажите выручку и приложите фотографии для закрытия смены.",
+    open: "Выберите тип смены.",
     create:
       user.role === "superuser"
-        ? "Assign to an administrator or manager."
-        : "Assign to the current administrator.",
+        ? "Назначьте задачу администратору или управляющему."
+        : "Назначьте задачу администратору текущей смены.",
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setError("");
     if (kind === "open") {
       if (state.shift) {
-        setError("Another shift is already open. Wait for it to close first.");
+        setError("Другая смена ещё открыта. Дождитесь её закрытия.");
         return;
       }
       onSave(
         { type: "OPEN_SHIFT", actorId: user.id, shiftType },
-        "Your shift is open. You’re ready to go.",
+        "Ваша смена открыта. Можно приступать к работе.",
       );
     } else if (kind === "expense") {
-      const amount = Number(cash);
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0 ||
-        !/^\d+(\.\d{1,2})?$/.test(cash)
-      ) {
-        setError("Enter a positive amount with up to two decimal places.");
+      const amount = parseAmount(cash);
+      if (!Number.isFinite(amount) || amount <= 0 || !validAmount(cash)) {
+        setError(
+          "Введите положительную сумму, не более двух знаков после запятой.",
+        );
         return;
       }
       if (amount > state.balance) {
         setError(
-          `The expense exceeds the available balance of ${money(state.balance)}.`,
+          `Сумма расхода превышает доступный остаток в кассе: ${money(state.balance)}.`,
         );
         return;
       }
       if (!description.trim()) {
-        setError("Describe what this expense was for.");
+        setError("Укажите, на что потрачены деньги.");
         return;
       }
       if (user.role === "admin" && state.shift?.adminId !== user.id) {
-        setError("Open your own shift before recording an expense.");
+        setError("Откройте свою смену, чтобы добавить расход.");
         return;
       }
       onSave(
@@ -1319,18 +1322,16 @@ function WorkflowForm({
           description: description.trim(),
           photo: photo || undefined,
         },
-        `${money(amount)} expense recorded and deducted from the register.`,
+        `${money(amount)} — расход сохранён и вычтен из кассы.`,
       );
     } else if (kind === "close") {
       if (state.shift?.adminId !== user.id) {
-        setError("Only the administrator who opened this shift can close it.");
+        setError("Закрыть смену может только открывший её администратор.");
         return;
       }
-      if (
-        [cash, cards, sbp].some((value) => !/^\d+(\.\d{1,2})?$/.test(value))
-      ) {
+      if ([cash, cards, sbp].some((value) => !validAmount(value))) {
         setError(
-          "Enter a nonnegative amount for cash, card, and SBP. Use 0 if there were no payments.",
+          "Укажите неотрицательную сумму наличных, оплаты картой и СБП. Если платежей не было, введите 0.",
         );
         return;
       }
@@ -1338,7 +1339,7 @@ function WorkflowForm({
         reportPhotoFields.some((field) => field.required && !photos[field.id])
       ) {
         setError(
-          "Add a photo for each required field before closing your shift.",
+          "Перед закрытием смены добавьте фотографии во все обязательные поля.",
         );
         return;
       }
@@ -1346,9 +1347,9 @@ function WorkflowForm({
         {
           type: "CLOSE_SHIFT",
           actorId: user.id,
-          cash: Number(cash),
-          cards: Number(cards),
-          sbp: Number(sbp),
+          cash: parseAmount(cash),
+          cards: parseAmount(cards),
+          sbp: parseAmount(sbp),
           photos: reportPhotoFields
             .filter((field) => photos[field.id])
             .map((field) => ({
@@ -1357,25 +1358,29 @@ function WorkflowForm({
               label: field.label,
             })),
         },
-        "Shift closed. Your report is saved and the next administrator can open a shift.",
+        "Смена закрыта, отчёт сохранён. Следующий администратор может открыть смену.",
       );
     } else {
       if (!state.shift && user.role !== "superuser") {
-        setError("A shift must be open before you can assign a task.");
+        setError("Чтобы назначить задачу, сначала нужно открыть смену.");
         return;
       }
       if (!assignees.some((person) => person.id === adminId)) {
-        setError("Choose an administrator or manager you can assign tasks to.");
+        setError(
+          "Выберите администратора или управляющего, которому можно назначить задачу.",
+        );
         return;
       }
       if (!title.trim() || !description.trim()) {
-        setError("Add a task title and clear instructions.");
+        setError("Укажите название задачи и понятные инструкции.");
         return;
       }
       if (photoMode === "named") {
         const photoError = photoFieldsError(taskPhotoFields);
         if (!taskPhotoFields.length || photoError) {
-          setError(photoError || "Add at least one named photo field.");
+          setError(
+            photoError || "Добавьте хотя бы одно именованное поле для фото.",
+          );
           return;
         }
       }
@@ -1404,7 +1409,7 @@ function WorkflowForm({
             referencePhoto: photo || undefined,
           },
         },
-        `Task assigned to ${person(adminId).name}.`,
+        `Исполнитель задачи: ${person(adminId).name}.`,
       );
     }
   };
@@ -1412,7 +1417,7 @@ function WorkflowForm({
     <div className="cp-form-page">
       <button className="cp-back" onClick={onBack}>
         <IconArrowLeft size={17} />
-        Back to workspace
+        Назад к работе
       </button>
       <div className="cp-page-heading">
         <div>
@@ -1424,26 +1429,24 @@ function WorkflowForm({
         <form className="cp-form-panel" onSubmit={submit} noValidate>
           {(kind === "open" || kind === "close") && (
             <>
-              <h2>Shift details</h2>
+              <h2>Данные смены</h2>
               {kind === "close" ? (
                 <>
                   <dl className="cp-closing-shift">
-                    <dt>Shift type</dt>
+                    <dt>Тип смены</dt>
                     <dd>
                       {state.shift
                         ? state.shift.type === "night"
-                          ? "Night shift"
-                          : "Day shift"
-                        : "No active shift"}
+                          ? "Ночная смена"
+                          : "Дневная смена"
+                        : "Нет активной смены"}
                     </dd>
                   </dl>
-                  <p className="cp-field-hint">
-                    Set when the shift was opened.
-                  </p>
+                  <p className="cp-field-hint">Выбран при открытии смены.</p>
                 </>
               ) : (
                 <fieldset className="cp-shift-choice">
-                  <legend>Shift type</legend>
+                  <legend>Тип смены</legend>
                   {(["day", "night"] as const).map((type) => (
                     <label
                       className={shiftType === type ? "cp-choice-selected" : ""}
@@ -1463,7 +1466,7 @@ function WorkflowForm({
                       )}
                       <span>
                         <strong>
-                          {type === "day" ? "Day shift" : "Night shift"}
+                          {type === "day" ? "Дневная смена" : "Ночная смена"}
                         </strong>
                         <small>
                           {type === "day" ? "10:00 – 22:00" : "22:00 – 10:00"}
@@ -1484,73 +1487,73 @@ function WorkflowForm({
             <>
               <div className="cp-register-strip">
                 <IconWallet size={21} />
-                <span>Available in the register</span>
+                <span>Доступно в кассе</span>
                 <strong>{money(state.balance)}</strong>
               </div>
               <label className="cp-field">
-                Expense amount <span className="cp-required">*</span>
+                Сумма расхода <span className="cp-required">*</span>
                 <span className="cp-input-money">
                   <input
-                    aria-label="Expense amount"
+                    aria-label="Сумма расхода"
                     inputMode="decimal"
                     value={cash}
                     onChange={(e) => setCash(e.target.value)}
-                    placeholder="0.00"
+                    placeholder="0,00"
                   />
                   <span>₽</span>
                 </span>
               </label>
               <label className="cp-field">
-                Description <span className="cp-required">*</span>
+                Описание <span className="cp-required">*</span>
                 <textarea
-                  aria-label="Expense description"
+                  aria-label="Описание расхода"
                   rows={4}
                   maxLength={2000}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="For example, cleaning supplies for the club"
+                  placeholder="Например, средства для уборки клуба"
                 />
               </label>
               <Upload
-                label="Receipt photo"
+                label="Фотография чека"
                 value={photo}
                 onError={setError}
                 onChange={setPhoto}
               />
               <p className="cp-field-hint">
-                A photo is optional. A description is always required.
+                Фотография необязательна. Описание требуется всегда.
               </p>
-              {Number(cash) > 0 && (
+              {parseAmount(cash) > 0 && (
                 <div className="cp-form-total">
-                  <span>Register balance after expense</span>
-                  <strong>{money(state.balance - Number(cash))}</strong>
+                  <span>Остаток в кассе после расхода</span>
+                  <strong>{money(state.balance - parseAmount(cash))}</strong>
                 </div>
               )}
             </>
           )}
           {kind === "close" && (
             <>
-              <h2 className="cp-form-section-title">Payment totals</h2>
+              <h2 className="cp-form-section-title">Выручка за смену</h2>
               <p className="cp-field-hint">
-                Enter the revenue collected during this shift.
+                Укажите выручку, полученную за эту смену.
               </p>
               <div className="cp-money-grid">
                 {[
-                  ["Cash", cash, setCash],
-                  ["Card", cards, setCards],
-                  ["SBP", sbp, setSbp],
+                  ["Наличные", cash, setCash],
+                  ["Карта", cards, setCards],
+                  ["СБП", sbp, setSbp],
                 ].map(([label, value, setter]) => (
                   <label className="cp-field" key={label as string}>
                     {label as string}
                     <span className="cp-input-money">
                       <input
-                        aria-label={`${label} total`}
+                        aria-label={`${label}: сумма`}
                         inputMode="decimal"
                         value={value as string}
                         onChange={(e) =>
                           (setter as (value: string) => void)(e.target.value)
                         }
-                        placeholder="0.00"
+                        placeholder="0,00"
                       />
                       <span>₽</span>
                     </span>
@@ -1558,18 +1561,21 @@ function WorkflowForm({
                 ))}
               </div>
               <div className="cp-form-total">
-                <span>Total shift revenue</span>
+                <span>Общая выручка за смену</span>
                 <strong>
                   {money(
-                    (Number(cash) || 0) +
-                      (Number(cards) || 0) +
-                      (Number(sbp) || 0),
+                    (parseAmount(cash) || 0) +
+                      (parseAmount(cards) || 0) +
+                      (parseAmount(sbp) || 0),
                   )}
                 </strong>
               </div>
-              <h2 className="cp-form-section-title">Closing photos</h2>
+              <h2 className="cp-form-section-title">
+                Фотографии закрытия смены
+              </h2>
               <p className="cp-field-hint">
-                Fields marked * are required. Up to 15 MB combined.
+                Поля со знаком * обязательны. Общий размер фотографий — до 15
+                МБ.
               </p>
               {reportPhotoFields.map((field) => (
                 <Upload
@@ -1586,89 +1592,91 @@ function WorkflowForm({
               <div className="cp-form-note">
                 <IconInfoCircle size={18} />
                 <p>
-                  Submitted tasks stay available for manager review after the
-                  shift closes. Cash revenue is added to the register.
+                  После закрытия смены выполненные задачи остаются доступны для
+                  проверки. Наличная выручка добавляется в кассу.
                 </p>
               </div>
             </>
           )}
           {kind === "create" && (
             <>
-              <h2>Task details</h2>
+              <h2>Описание задачи</h2>
               <label className="cp-field">
-                Task title <span className="cp-required">*</span>
+                Название задачи <span className="cp-required">*</span>
                 <input
-                  aria-label="Task title"
+                  aria-label="Название задачи"
                   maxLength={160}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="For example, clean the gaming stations"
+                  placeholder="Например, убрать игровые места"
                 />
               </label>
               <label className="cp-field">
-                Instructions <span className="cp-required">*</span>
+                Инструкции <span className="cp-required">*</span>
                 <textarea
-                  aria-label="Task instructions"
+                  aria-label="Инструкции к задаче"
                   rows={4}
                   maxLength={4000}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe what needs to be done and what a good result looks like…"
+                  placeholder="Опишите, что нужно сделать и каким должен быть результат…"
                 />
               </label>
               <div className="cp-money-grid cp-two-columns">
                 <label className="cp-field">
-                  Assign to
+                  Исполнитель
                   <select
-                    aria-label="Assign to"
+                    aria-label="Исполнитель"
                     value={adminId}
                     onChange={(e) => setAdminId(e.target.value)}
                   >
                     {assignees.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name} ·{" "}
-                        {p.role === "admin" ? "Administrator" : "Manager"}
-                        {p.id === state.shift?.adminId ? " · On shift" : ""}
+                        {p.role === "admin" ? "Администратор" : "Управляющий"}
+                        {p.id === state.shift?.adminId ? " · На смене" : ""}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="cp-field">
-                  Priority
+                  Приоритет
                   <select
-                    aria-label="Task priority"
+                    aria-label="Приоритет задачи"
                     value={priority}
                     onChange={(e) =>
                       setPriority(e.target.value as typeof priority)
                     }
                   >
-                    <option value="normal">Normal</option>
-                    <option value="high">High priority</option>
-                    <option value="low">Low priority</option>
+                    <option value="normal">Обычный</option>
+                    <option value="high">Высокий приоритет</option>
+                    <option value="low">Низкий приоритет</option>
                   </select>
                 </label>
               </div>
               <Upload
-                label="Reference photo"
+                label="Фото-пример"
                 value={photo}
                 onError={setError}
                 onChange={setPhoto}
               />
               <label className="cp-field">
-                Completion photo requirements
+                Требования к фотографиям выполнения
                 <select
-                  aria-label="Task photo requirements"
+                  aria-label="Требования к фото задачи"
                   value={photoMode}
                   onChange={(event) =>
                     setPhotoMode(event.target.value as PhotoMode)
                   }
                 >
-                  <option value="optional">Optional photo</option>
-                  <option value="single">One photo, no description</option>
-                  <option value="multiple">
-                    Multiple photos, no descriptions
+                  <option value="optional">Необязательное фото</option>
+                  <option value="single">
+                    Одно фото без указания содержимого
                   </option>
-                  <option value="named">Specific named photos</option>
+                  <option value="multiple">
+                    Несколько фото без указания содержимого
+                  </option>
+                  <option value="named">Фото по указанным полям</option>
                 </select>
               </label>
               {photoMode === "named" && (
@@ -1679,9 +1687,7 @@ function WorkflowForm({
               )}
               <div className="cp-form-note">
                 <IconLock size={17} />
-                <p>
-                  The assignee completes this task. You review the submission.
-                </p>
+                <p>Исполнитель выполняет задачу, а вы проверяете результат.</p>
               </div>
             </>
           )}
@@ -1689,8 +1695,8 @@ function WorkflowForm({
             <div className="cp-form-note">
               <IconInfoCircle size={19} />
               <p>
-                You’ll become the administrator for the current shift. The next
-                administrator can open a shift after you close yours.
+                Вы станете администратором текущей смены. Следующий
+                администратор сможет открыть смену после закрытия вашей.
               </p>
             </div>
           )}
@@ -1705,7 +1711,7 @@ function WorkflowForm({
               className="cp-button cp-button-secondary"
               onClick={onBack}
             >
-              Cancel
+              Отмена
             </button>
             <button className="cp-button cp-button-primary">
               {kind === "expense" ? (
@@ -1718,9 +1724,9 @@ function WorkflowForm({
                 <IconDoorEnter size={17} />
               )}
               {kind === "expense"
-                ? "Record expense"
+                ? "Сохранить расход"
                 : kind === "create"
-                  ? "Assign task"
+                  ? "Назначить задачу"
                   : headings[kind]}
               <IconArrowRight size={16} />
             </button>

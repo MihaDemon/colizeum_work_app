@@ -22,11 +22,11 @@ export function PhotoFieldsEditor({
       {fields.map((field, index) => (
         <div className="cp-photo-field-row" key={field.id}>
           <label className="cp-field">
-            Photo name {index + 1}
+            Название фотографии {index + 1}
             <input
               maxLength={100}
               value={field.label}
-              placeholder="For example, administrator desk"
+              placeholder="Например, стол администратора"
               onChange={(event) =>
                 onChange(
                   fields.map((item) =>
@@ -42,7 +42,7 @@ export function PhotoFieldsEditor({
             <label>
               <input
                 type="checkbox"
-                aria-label={`Required photo ${index + 1}`}
+                aria-label={`Обязательное фото ${index + 1}`}
                 checked={field.required}
                 onChange={(event) =>
                   onChange(
@@ -54,12 +54,12 @@ export function PhotoFieldsEditor({
                   )
                 }
               />{" "}
-              Required
+              Обязательно
             </label>
             <button
               className="cp-text-button"
               type="button"
-              aria-label={`Remove photo field ${index + 1}`}
+              aria-label={`Удалить поле для фото ${index + 1}`}
               onClick={() =>
                 onChange(fields.filter((item) => item.id !== field.id))
               }
@@ -80,7 +80,7 @@ export function PhotoFieldsEditor({
           ])
         }
       >
-        <IconPlus size={18} /> Add photo field
+        <IconPlus size={18} /> Добавить поле для фото
       </button>
     </div>
   );
@@ -88,14 +88,20 @@ export function PhotoFieldsEditor({
 
 function readPhoto(file: File): Promise<string> {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
-    return Promise.reject(new Error("Choose JPG, PNG, or WebP photos."));
+    return Promise.reject(
+      new Error("Выберите фотографии в формате JPG, PNG или WebP."),
+    );
   if (file.size > 5 * 1024 * 1024)
-    return Promise.reject(new Error("Choose photos under 5 MB each."));
+    return Promise.reject(
+      new Error("Размер каждой фотографии должен быть не более 5 МБ."),
+    );
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () =>
-      reject(new Error("A photo could not be read. Please choose it again."));
+      reject(
+        new Error("Не удалось прочитать фотографию. Выберите её ещё раз."),
+      );
     reader.readAsDataURL(file);
   });
 }
@@ -143,7 +149,7 @@ export function EvidenceUploads({
                     onChange(photos.filter((photo) => photo.slot !== field.id))
                   }
                 >
-                  Remove {field.label}
+                  Удалить {field.label}
                 </button>
               )}
             </div>
@@ -155,12 +161,12 @@ export function EvidenceUploads({
     return (
       <>
         <Upload
-          label="Completion photo"
+          label="Фото выполнения"
           required={mode === "single"}
           value={photos[0]?.url}
           onError={onError}
           onChange={(url) =>
-            onChange([{ url, slot: "", label: "Completion photo" }])
+            onChange([{ url, slot: "", label: "Фото выполнения" }])
           }
         />
         {photos.length > 0 && (
@@ -169,7 +175,7 @@ export function EvidenceUploads({
             className="cp-text-button"
             onClick={() => remove(0)}
           >
-            Remove photo
+            Удалить фото
           </button>
         )}
       </>
@@ -179,14 +185,14 @@ export function EvidenceUploads({
       {photos.map((photo, index) => (
         <div key={photo.id || `${index}-${photo.url.slice(-30)}`}>
           <Upload
-            label={`Completion photo ${index + 1}`}
+            label={`Фото выполнения ${index + 1}`}
             value={photo.url}
             onError={onError}
             onChange={(url) =>
               onChange(
                 photos.map((item, i) =>
                   i === index
-                    ? { url, slot: "", label: `Photo ${index + 1}` }
+                    ? { url, slot: "", label: `Фото ${index + 1}` }
                     : item,
                 ),
               )
@@ -197,15 +203,15 @@ export function EvidenceUploads({
             type="button"
             onClick={() => remove(index)}
           >
-            Remove photo {index + 1}
+            Удалить фото {index + 1}
           </button>
         </div>
       ))}
       <label className="cp-field">
-        Completion photos
+        Фотографии выполнения
         <input
           type="file"
-          aria-label="Completion photos"
+          aria-label="Фотографии выполнения"
           multiple
           accept="image/jpeg,image/png,image/webp"
           disabled={reading || photos.length >= 10}
@@ -214,7 +220,7 @@ export function EvidenceUploads({
             const selected = Array.from(input.files || []);
             if (!selected.length) return;
             if (photos.length + selected.length > 10) {
-              onError("Attach at most 10 photos.");
+              onError("Можно прикрепить не более 10 фотографий.");
               input.value = "";
               return;
             }
@@ -226,7 +232,7 @@ export function EvidenceUploads({
                 ...urls.map((url, i) => ({
                   url,
                   slot: "",
-                  label: `Photo ${photos.length + i + 1}`,
+                  label: `Фото ${photos.length + i + 1}`,
                 })),
               ]);
               onError("");
@@ -240,8 +246,8 @@ export function EvidenceUploads({
         />
         <small>
           {reading
-            ? "Reading photos…"
-            : `${photos.length}/10 photos · up to 5 MB each, 15 MB combined`}
+            ? "Читаем фотографии…"
+            : `${photos.length}/10 фото · до 5 МБ каждое, до 15 МБ всего`}
         </small>
       </label>
     </>
@@ -269,14 +275,15 @@ export function PhotoSettingsPage({
   return (
     <div className="cp-form-page">
       <button className="cp-back" onClick={onBack}>
-        <IconArrowLeft size={18} /> Back to more
+        <IconArrowLeft size={18} /> Назад в «Ещё»
       </button>
       <div className="cp-page-heading">
-        <h1>Report photos</h1>
+        <h1>Фотографии отчёта</h1>
       </div>
       <p className="cp-field-hint">
-        Name the photos administrators should send when closing a shift. Changes
-        apply to new shifts; the active shift keeps its current requirements.
+        Укажите, какие фотографии администраторы должны отправлять при закрытии
+        смены. Изменения применяются к новым сменам; в текущей смене требования
+        сохраняются.
       </p>
       <form
         onSubmit={async (event) => {
@@ -295,7 +302,7 @@ export function PhotoSettingsPage({
                   label: field.label.trim(),
                 })),
               },
-              "Report photo requirements saved.",
+              "Требования к фотографиям отчёта сохранены.",
             ))
           )
             setVersion(version + 1);
@@ -310,7 +317,7 @@ export function PhotoSettingsPage({
         />
         {!fields.length && (
           <p className="cp-field-hint">
-            New shifts will not require closing photos.
+            Для новых смен фотографии закрытия не потребуются.
           </p>
         )}
         {error && (
@@ -320,7 +327,7 @@ export function PhotoSettingsPage({
         )}
         <div className="cp-form-actions">
           <button className="cp-button cp-button-primary">
-            Save photo requirements
+            Сохранить требования к фото
           </button>
         </div>
       </form>

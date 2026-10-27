@@ -11,8 +11,8 @@ from users.constraints import (
 
 
 class AdminUser(models.Model):
-    role = models.CharField(max_length=7, choices=[('admin', 'Administrator'), ('manager', 'Manager')], default='admin')
-    telegram_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    role = models.CharField(max_length=7, choices=[('admin', 'Администратор'), ('manager', 'Управляющий')], default='admin', verbose_name='Роль')
+    telegram_id = models.CharField(max_length=255, unique=True, null=True, blank=True, verbose_name='Telegram ID')
 
     phone_number = models.CharField(
         verbose_name='Номер телефона',

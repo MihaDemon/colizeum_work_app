@@ -34,8 +34,8 @@ export function PrivateImage({
     return (
       <span role="status">
         {failed
-          ? "Photo could not be loaded. Reopen this view to retry."
-          : "Loading photo…"}
+          ? "Не удалось загрузить фотографию. Откройте этот экран ещё раз."
+          : "Загружаем фотографию…"}
       </span>
     );
   return (
