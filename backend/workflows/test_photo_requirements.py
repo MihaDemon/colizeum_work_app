@@ -137,7 +137,7 @@ class PhotoRequirementTests(APITestCase):
             if mode == 'single':
                 response = self.client.post(url, {'photos': [photo()]})
                 self.assertEqual(response.status_code, 200, response.data)
-            self.assertEqual([item['label'] for item in response.data['photos']], ['Completion photo'] if mode == 'single' else ['Photo 1', 'Photo 2'])
+            self.assertEqual([item['label'] for item in response.data['photos']], ['Фото выполнения'] if mode == 'single' else ['Фото 1', 'Фото 2'])
 
     def test_rework_retains_selected_photos_and_preserves_older_versions(self):
         self.open()

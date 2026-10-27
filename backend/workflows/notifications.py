@@ -14,23 +14,23 @@ from .models import TelegramNotification
 
 def telegram_send(recipient, task):
     if not settings.TELEGRAM_BOT_TOKEN or not recipient.telegram_id or not recipient.is_active:
-        raise DeliveryError('Bot token or recipient Telegram ID is missing.')
+        raise DeliveryError('Не указан токен бота или Telegram ID получателя.')
     payload = {'chat_id': recipient.telegram_id,
-               'text': f'Task completed: {task.title}\nThe submission is awaiting your review.'}
+               'text': f'Задача выполнена: {task.title}\nРезультат ожидает вашей проверки.'}
     if settings.WEBAPP_URL:
         separator = '&' if '?' in settings.WEBAPP_URL else '?'
-        payload['reply_markup'] = {'inline_keyboard': [[{'text': 'Review task', 'web_app': {'url': f'{settings.WEBAPP_URL}{separator}task={task.pk}'}}]]}
+        payload['reply_markup'] = {'inline_keyboard': [[{'text': 'Проверить задачу', 'web_app': {'url': f'{settings.WEBAPP_URL}{separator}task={task.pk}'}}]]}
     request = Request(f'https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage',
                       data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}, method='POST')
     try:
         with urlopen(request, timeout=15) as response:
             result = json.load(response)
         if not result.get('ok'):
-            raise DeliveryError('Telegram did not accept the notification.')
+            raise DeliveryError('Telegram не принял уведомление.')
     except HTTPError as exc:
-        raise DeliveryError(f'Telegram HTTP {exc.code}.') from None
+        raise DeliveryError(f'Ошибка Telegram: HTTP {exc.code}.') from None
     except (URLError, TimeoutError, ValueError, OSError):
-        raise DeliveryError('Telegram connection failed.') from None
+        raise DeliveryError('Не удалось подключиться к Telegram.') from None
 
 
 class DeliveryError(Exception):
@@ -56,7 +56,7 @@ def deliver_one(send=telegram_send):
         send(job.recipient, job.submission.task)
     except Exception as exc:
         # Never persist HTTP exception URLs (which include the bot token).
-        message = str(exc) if isinstance(exc, DeliveryError) else 'Notification delivery failed.'
+        message = str(exc) if isinstance(exc, DeliveryError) else 'Не удалось доставить уведомление.'
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim, status='sending').update(
             status='failed' if job.attempts >= 10 else 'pending', last_error=message[:200],
             next_attempt_at=timezone.now() + timedelta(seconds=min(3600, 10 * 2 ** min(job.attempts, 9))))

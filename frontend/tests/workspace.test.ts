@@ -8,13 +8,13 @@ import {
 
 const admin: StaffMember = {
   id: "admin",
-  name: "Administrator",
+  name: "Администратор",
   initials: "A",
   role: "admin",
 };
 const manager: StaffMember = {
   id: "manager",
-  name: "Manager",
+  name: "Управляющий",
   initials: "M",
   role: "manager",
 };

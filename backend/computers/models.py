@@ -87,31 +87,36 @@ class Station(models.Model):
         'Mouse',
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='Мышь',
     )
     keyboard = models.OneToOneField(
         'Keyboard',
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='Клавиатура',
     )
     headset = models.OneToOneField(
         'Headset',
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='Наушники',
     )
     monitor = models.OneToOneField(
         'Monitor',
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='Монитор',
     )
     pc = models.OneToOneField(
         'PC',
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='ПК',
     )
     info = models.TextField(
         verbose_name='Информация',

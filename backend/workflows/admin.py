@@ -32,7 +32,7 @@ class NotificationAdmin(ReadOnlyAdmin):
     list_filter = ['status']
     actions = ['retry_failed']
 
-    @admin.action(description='Retry selected failed notifications', permissions=['view'])
+    @admin.action(description='Повторить отправку выбранных уведомлений', permissions=['view'])
     def retry_failed(self, request, queryset):
         if request.user.is_superuser:
             queryset.filter(status='failed').update(status='pending', attempts=0, next_attempt_at=timezone.now())

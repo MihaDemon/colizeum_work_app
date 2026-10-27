@@ -2,6 +2,8 @@
 
 Telegram Mini App for administrator shifts, cash expenses, task assignment and moderation, and club equipment. The app uses authenticated Django APIs. Managers see tasks they assigned or received; superusers can assign and review tasks across the team.
 
+The Mini App, Django administration, validation messages, and Telegram notifications use Russian. Dates and amounts use Russian formats and Moscow time; monetary inputs accept decimal commas. User-entered names, task instructions, and photo labels are preserved.
+
 ## Production setup
 
 Use one root `.env` and the single nginx configuration at `infra/nginx.conf`.
@@ -55,12 +57,12 @@ The Telegram ID on `AdminUser` is filled automatically and is read-only in Djang
 ## Shift, task, and cash behavior
 
 - Only one shift can be open. Its administrator chooses day/night at opening, and that stored type is used at closing.
-- Closing requires cash, card, SBP, and the report photos configured by management. Managers and superusers use **More → Report photos** to add, name, remove, and mark fields required or optional. The default fields are administrator desk, closing receipt, and an optional additional photo. Each shift saves its photo requirements when it opens; later changes apply to new shifts. Cash means **revenue collected during the shift**. Only that cash revenue increases the register; card and SBP do not.
+- Closing requires cash, card, SBP, and the report photos configured by management. Managers and superusers use **Ещё → Фотографии отчёта** to add, name, remove, and mark fields required or optional. The default fields are administrator desk, closing receipt, and an optional additional photo. Each shift saves its photo requirements when it opens; later changes apply to new shifts. Cash means **revenue collected during the shift**. Only that cash revenue increases the register; card and SBP do not.
 - Expenses require a positive amount and description, optionally a receipt photo. They reduce cash and cannot overdraw the register.
 - Managers assign the current shift administrator. Superusers can assign administrators or managers, including personal tasks without an active shift. Superusers cannot receive tasks.
 - Administrators complete tasks during their own shift; managers may complete personal tasks without one. When creating a task, managers and superusers choose an optional photo, one required photo, multiple required photos without named fields, or specific named fields with required/optional choices. Multiple-photo tasks require at least one image and allow up to ten. Django enforces the requirements. Every submission keeps its own evidence; rejected tasks can retain selected photos and replace others without changing older submissions. All submitted photos and their labels are visible during moderation.
-- Submitted tasks remain **On moderation** until the assigning manager or a superuser accepts them. Rejection requires a reason and returns the task for rework. Submission and review history is retained.
-- Shift history, including cash + card + SBP totals, is under **More**. The active shift and cash balance remain visible on the management task screen. Imported reports show their recorded dates without invented shift times.
+- Submitted tasks remain **На проверке** until the assigning manager or a superuser accepts them. Rejection requires a reason and returns the task for rework. Submission and review history is retained.
+- Shift history, including cash + card + SBP totals, is under **Ещё**. The active shift and cash balance remain visible on the management task screen. Imported reports show their recorded dates without invented shift times.
 - Device lookup uses Telegram's native camera QR scanner. Inventory browsing and staff editing remain available.
 - QR downloads use Telegram's native download dialog (version 8.0+) or an external browser on older clients. Each click creates a fresh link valid for five minutes and limited to one QR PNG; the link contains no API token. The server sends attachment and Telegram Web CORS headers. Inventory APIs still require authentication.
 

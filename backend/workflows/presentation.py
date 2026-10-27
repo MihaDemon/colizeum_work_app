@@ -18,7 +18,7 @@ def task_data(task):
     photos = []
     if submission:
         if submission.photo:
-            photos.append({'id': f'legacy-{submission.pk}', 'slot': '', 'label': 'Completion photo', 'url': file_url('submission', submission.pk)})
+            photos.append({'id': f'legacy-{submission.pk}', 'slot': '', 'label': 'Фото выполнения', 'url': file_url('submission', submission.pk)})
         photos.extend({'id': str(photo.pk), 'slot': photo.slot, 'label': photo.label, 'url': file_url('submission-photo', photo.pk)} for photo in submission.photos.all())
     return {
         'id': str(task.pk), 'title': task.title, 'description': task.description,
@@ -43,7 +43,7 @@ def shift_data(shift):
         'photoRequirements': shift.photo_requirements,
         **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
             'total': str(report.cash + report.cards + report.spb),
-            'photos': {p.label or f'Photo {p.pk}': file_url('report', p.pk) for p in report.photos.all()}} if report else {}),
+            'photos': {p.label or f'Фото {p.pk}': file_url('report', p.pk) for p in report.photos.all()}} if report else {}),
     }
 
 
@@ -81,7 +81,7 @@ def workspace_data(user):
         'openedAt': f'{r.date.isoformat()}T12:00:00+03:00', 'legacy': True,
         'cash': float(r.cash), 'cards': float(r.cards), 'sbp': float(r.spb),
         'total': str(r.cash + r.cards + r.spb),
-        'photos': {p.label or f'Photo {p.pk}': file_url('report', p.pk) for p in r.photos.all()},
+        'photos': {p.label or f'Фото {p.pk}': file_url('report', p.pk) for p in r.photos.all()},
     } for r in legacy_reports]
     balance = CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0
     return {

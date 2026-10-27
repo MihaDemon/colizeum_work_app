@@ -14,12 +14,12 @@ class PhotoRequirementsField(serializers.JSONField):
     def to_internal_value(self, data):
         data = super().to_internal_value(data)
         if not isinstance(data, list) or len(data) > MAX_PHOTOS:
-            raise serializers.ValidationError('Use at most 10 photo fields.')
+            raise serializers.ValidationError('Можно добавить не более 10 полей для фотографий.')
         fields = PhotoRequirementSerializer(data=data, many=True)
         fields.is_valid(raise_exception=True)
         values = fields.validated_data
         if len({field['id'] for field in values}) != len(values) or len({field['label'].casefold() for field in values}) != len(values):
-            raise serializers.ValidationError('Photo field names and IDs must be unique.')
+            raise serializers.ValidationError('Названия и идентификаторы полей для фото должны различаться.')
         return values
 
 
@@ -32,9 +32,9 @@ class PhotoField(serializers.ImageField):
     def to_internal_value(self, data):
         image = super().to_internal_value(data)
         if image.size > 5 * 1024 * 1024:
-            raise serializers.ValidationError('Choose an image under 5 MB.')
+            raise serializers.ValidationError('Выберите изображение не более 5 МБ.')
         if image.image.format not in {'JPEG', 'PNG', 'WEBP'}:
-            raise serializers.ValidationError('Use a JPG, PNG, or WebP photo.')
+            raise serializers.ValidationError('Используйте фото в формате JPG, PNG или WebP.')
         return image
 
 
@@ -52,7 +52,7 @@ class PhotoUploadSerializer(serializers.Serializer):
             not isinstance(slots, list) or len(slots) != len(attrs.get('photos', []))
             or any(not isinstance(slot, str) or len(slot) > 64 for slot in slots)
         ):
-            raise serializers.ValidationError({'photo_slots': 'Provide a photo field ID for each upload.'})
+            raise serializers.ValidationError({'photo_slots': 'Укажите идентификатор поля для каждой фотографии.'})
         return attrs
 
 
@@ -67,7 +67,7 @@ class CloseShiftSerializer(PhotoUploadSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if 'shift_type' in self.initial_data or 'shift' in self.initial_data:
-            raise serializers.ValidationError('Shift type is fixed when the shift opens.')
+            raise serializers.ValidationError('Тип смены задаётся при открытии и не меняется при закрытии.')
         return attrs
 
 
@@ -91,9 +91,9 @@ class CreateTaskSerializer(serializers.Serializer):
         mode = attrs.setdefault('photo_mode', 'single' if attrs['requires_photo'] else 'optional')
         fields = attrs['photo_requirements']
         if mode == 'named' and not fields:
-            raise serializers.ValidationError({'photo_requirements': 'Add at least one named photo field.'})
+            raise serializers.ValidationError({'photo_requirements': 'Добавьте хотя бы одно именованное поле для фото.'})
         if mode != 'named' and fields:
-            raise serializers.ValidationError({'photo_requirements': 'Named fields require the named photos option.'})
+            raise serializers.ValidationError({'photo_requirements': 'Именованные поля доступны только для режима фото по указанным полям.'})
         attrs['requires_photo'] = mode in ['single', 'multiple'] or (mode == 'named' and any(field['required'] for field in fields))
         return attrs
 
@@ -107,7 +107,7 @@ class SubmitTaskSerializer(PhotoUploadSerializer):
         attrs = super().validate(attrs)
         retained = attrs.get('retained_photos')
         if retained is not None and (not isinstance(retained, list) or len(retained) > MAX_PHOTOS or any(not isinstance(pk, str) or len(pk) > 64 for pk in retained) or len(set(retained)) != len(retained)):
-            raise serializers.ValidationError({'retained_photos': 'Choose valid previous submission photos.'})
+            raise serializers.ValidationError({'retained_photos': 'Выберите допустимые фотографии из предыдущего выполнения.'})
         return attrs
 
 
@@ -118,5 +118,5 @@ class ReviewTaskSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if not attrs['accept'] and not attrs['reason'].strip():
-            raise serializers.ValidationError({'reason': 'Explain what needs to be corrected.'})
+            raise serializers.ValidationError({'reason': 'Объясните, что нужно исправить.'})
         return attrs

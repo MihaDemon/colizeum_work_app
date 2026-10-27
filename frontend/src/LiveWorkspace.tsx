@@ -77,7 +77,7 @@ export default function LiveWorkspace({ account }: { account: User }) {
   }, [refresh]);
 
   const perform = async (action: Action) => {
-    if (inFlight.current) throw new Error("Please wait for the current save.");
+    if (inFlight.current) throw new Error("Дождитесь завершения сохранения.");
     inFlight.current = true;
     ++refreshVersion.current;
     setBusy(true);
@@ -92,7 +92,7 @@ export default function LiveWorkspace({ account }: { account: User }) {
         case "CLOSE_SHIFT": {
           const shift = snapshotRef.current?.state.shift;
           if (!shift)
-            throw new Error("This shift has already closed. Refresh the app.");
+            throw new Error("Эта смена уже закрыта. Обновите приложение.");
           path = `shifts/${shift.id}/close/`;
           body.append("cash", action.cash.toFixed(2));
           body.append("cards", action.cards.toFixed(2));
@@ -142,7 +142,9 @@ export default function LiveWorkspace({ account }: { account: User }) {
           body.append("version", String(action.version || 0));
           break;
         default:
-          throw new Error("Unknown workspace action.");
+          throw new Error(
+            "Не удалось выполнить действие. Обновите приложение.",
+          );
       }
       const signature = JSON.stringify(action);
       if (retry.current?.signature !== signature)
@@ -155,7 +157,9 @@ export default function LiveWorkspace({ account }: { account: User }) {
       retry.current = null;
       // The command succeeded even if refreshing loses connection. Do not invite a duplicate save.
       await refresh().catch(() =>
-        setError("Saved. Reconnecting to load the latest data…"),
+        setError(
+          "Сохранено. Восстанавливаем соединение, чтобы обновить данные…",
+        ),
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 409)
@@ -173,7 +177,7 @@ export default function LiveWorkspace({ account }: { account: User }) {
         <button
           onClick={() => void refresh().catch((e) => setError(e.message))}
         >
-          Retry
+          Повторить
         </button>
       </main>
     ) : (

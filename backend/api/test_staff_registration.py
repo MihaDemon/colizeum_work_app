@@ -80,8 +80,8 @@ class StaffRegistrationTests(APITestCase):
                 self.assertTrue({'first_name', 'last_name', 'phone_number'}.issubset(form.errors))
 
     def test_form_rejects_duplicate_numbers_in_different_formats(self):
-        AdminUser.objects.create(phone_number='+79991234567', first_name='Existing', last_name='Employee')
-        form = AdminUserForm(data={'first_name': 'New', 'last_name': 'Employee', 'phone_number': '8 (999) 123-45-67', 'role': 'admin'})
+        AdminUser.objects.create(phone_number='+79991234567', first_name='Existing', last_name='Сотрудник')
+        form = AdminUserForm(data={'first_name': 'New', 'last_name': 'Сотрудник', 'phone_number': '8 (999) 123-45-67', 'role': 'admin'})
         self.assertFalse(form.is_valid())
         self.assertIn('phone_number', form.errors)
 
@@ -112,7 +112,7 @@ class StaffRegistrationTests(APITestCase):
         manager.user_permissions.add(Permission.objects.get(codename='add_adminuser'))
         self.client.force_login(manager)
         response = self.client.post(reverse('admin:users_adminuser_add'), {
-            'first_name': 'New', 'last_name': 'Employee', 'phone_number': '9991234567', 'role': 'admin',
+            'first_name': 'New', 'last_name': 'Сотрудник', 'phone_number': '9991234567', 'role': 'admin',
         })
         self.assertEqual(response.status_code, 403)
         self.assertFalse(AdminUser.objects.exists())

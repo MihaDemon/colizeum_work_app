@@ -31,7 +31,8 @@ class Report(models.Model):
         User,
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='Администратор',
     )
     cards = models.DecimalField(
         verbose_name='Безнал',
@@ -100,7 +101,8 @@ class Expenses(models.Model):
         User,
         on_delete=models.SET_NULL,
         blank=True,
-        null=True
+        null=True,
+        verbose_name='Администратор',
     )
     amount = models.DecimalField(
         verbose_name='Сумма',
@@ -148,7 +150,7 @@ class Expenses(models.Model):
 
 
 class ReportPhoto(models.Model):
-    label = models.CharField(max_length=100, blank=True)
+    label = models.CharField(max_length=100, blank=True, verbose_name='Название фотографии')
     report = models.ForeignKey(
         Report,
         on_delete=models.CASCADE,

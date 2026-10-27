@@ -38,7 +38,7 @@ class AuthViewSet(viewsets.ViewSet):
     @staticmethod
     def telegram_id(request):
         if not isinstance(request.data, Mapping):
-            raise ValidationError({'error': 'Expected an object.'})
+            raise ValidationError({'error': 'Ожидается объект с данными.'})
         init_data = request.data.get('initData')
         bot_token = settings.TELEGRAM_BOT_TOKEN
 
@@ -75,7 +75,7 @@ class AuthViewSet(viewsets.ViewSet):
         user = User.objects.filter(telegram_id=telegram_id).first()
         if user:
             if not user.is_active:
-                raise PermissionDenied('This account is disabled.')
+                raise PermissionDenied('Учётная запись отключена.')
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
             token, _ = Token.objects.get_or_create(user=user)
@@ -98,13 +98,13 @@ class AuthViewSet(viewsets.ViewSet):
                 if not contact or normalize_staff_phone(contact.pk) != registration.validated_data['phone_number']:
                     raise PermissionDenied('Подтвердите свой номер через Telegram в приложении. Суперпользователь должен добавить вас в список сотрудников.')
                 if User.objects.filter(phone_number=contact).exists():
-                    raise ValidationError({'phone_number': 'This phone is already registered.'})
+                    raise ValidationError({'phone_number': 'Этот телефон уже зарегистрирован.'})
                 user = User.objects.create_user(username=registration.validated_data['username'], phone_number=contact,
                     first_name=contact.first_name, last_name=contact.last_name,
                     telegram_id=telegram_id, is_staff=contact.role == 'manager', last_login=timezone.now())
                 token = Token.objects.create(user=user)
         except IntegrityError:
-            raise ValidationError({'error': 'This account is already registered. Sign in again.'})
+            raise ValidationError({'error': 'Аккаунт уже зарегистрирован. Выполните вход ещё раз.'})
         except DjangoValidationError:
             raise ValidationError({'phone_number': 'Проверьте номер в записи сотрудника у суперпользователя.'})
         return Response({'token': token.key, 'is_new_user': True}, status=201)
@@ -206,16 +206,16 @@ class FinancialRecordViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Mini App clients must use the shift workflow to prevent bypassing shift ownership.
         if not settings.ENABLE_LEGACY_FINANCIAL_WRITES:
-            raise PermissionDenied('Use the shift or expense workflow.')
+            raise PermissionDenied('Используйте раздел смен или расходов.')
         serializer.save(admin=self.request.user)
 
     def check_mutable(self, instance):
         if not settings.ENABLE_LEGACY_FINANCIAL_WRITES:
-            raise PermissionDenied('Use the shift workflow. Financial corrections require Django administration.')
+            raise PermissionDenied('Используйте раздел смен. Финансовые исправления доступны в панели управления.')
         from workflows.models import Shift, ShiftExpense
         linked = Shift.objects.filter(report_id=instance.pk).exists() if isinstance(instance, Report) else ShiftExpense.objects.filter(expense_id=instance.pk).exists()
         if linked:
-            raise PermissionDenied('Workflow records are immutable. Use the Django administration for audited corrections.')
+            raise PermissionDenied('Записи смен нельзя изменять. Для исправлений с сохранением истории используйте панель управления.')
 
     def perform_update(self, serializer):
         self.check_mutable(serializer.instance)
@@ -261,7 +261,7 @@ class FinancialPhotoViewSet(viewsets.ModelViewSet):
 
     def check_parent(self, parent):
         if parent.admin_id != self.request.user.pk and not (self.request.user.is_staff or self.request.user.is_superuser):
-            raise PermissionDenied('This record belongs to another employee.')
+            raise PermissionDenied('Эта запись принадлежит другому сотруднику.')
         FinancialRecordViewSet.check_mutable(self, parent)
 
     def perform_create(self, serializer):

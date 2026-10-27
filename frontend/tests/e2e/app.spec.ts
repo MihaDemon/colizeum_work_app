@@ -6,17 +6,40 @@ const namedFields = [
   { id: "after", label: "After cleaning", required: true },
 ];
 
+test("Russian monetary inputs accept decimal commas and send numeric API values", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+  await page
+    .getByRole("button", { name: "Добавить расход", exact: true })
+    .click();
+  await page.getByLabel("Сумма расхода", { exact: true }).fill("125,50");
+  await page
+    .getByLabel("Описание расхода", { exact: true })
+    .fill("Средства для уборки");
+  await expect(page.locator(".cp-form-total")).toContainText("874,50 ₽");
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith("/api/shift-expenses/") && r.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Сохранить расход", exact: true })
+    .click();
+  expect((await sent).postData()).toContain("125.50");
+});
+
 test("administrators have neither logout nor report photo settings", async ({
   page,
 }) => {
   await setup(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
   await expect(
     page.getByRole("button", { name: /sign out|log out|logout/i }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Report photos", exact: true }),
+    page.getByRole("button", { name: "Фотографии отчёта", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -26,21 +49,23 @@ for (const owner of [false, true]) {
   }, info) => {
     await setup(page, { staff: !owner, owner });
     await page.goto("/");
-    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("button", { name: "Ещё", exact: true }).click();
     await expect(
       page.getByRole("button", { name: /sign out|log out|logout/i }),
     ).toHaveCount(0);
     await page
-      .getByRole("button", { name: "Report photos", exact: true })
+      .getByRole("button", { name: "Фотографии отчёта", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "Remove photo field 3", exact: true })
+      .getByRole("button", { name: "Удалить поле для фото 3", exact: true })
       .click();
     await page
-      .getByLabel("Photo name 1", { exact: true })
+      .getByLabel("Название фотографии 1", { exact: true })
       .fill("Reception desk");
-    await page.getByLabel("Photo name 2", { exact: true }).fill("Gaming hall");
-    await page.getByLabel("Required photo 2", { exact: true }).uncheck();
+    await page
+      .getByLabel("Название фотографии 2", { exact: true })
+      .fill("Gaming hall");
+    await page.getByLabel("Обязательное фото 2", { exact: true }).uncheck();
     await page.screenshot({
       path: info.outputPath("report-photo-settings.png"),
       fullPage: true,
@@ -49,17 +74,17 @@ for (const owner of [false, true]) {
       (r) => r.url().endsWith("/api/photo-settings/") && r.method() === "POST",
     );
     await page
-      .getByRole("button", { name: "Save photo requirements", exact: true })
+      .getByRole("button", { name: "Сохранить требования к фото", exact: true })
       .click();
     const data = (await sent).postData()!;
     expect(data).toContain('"label":"Reception desk","required":true');
     expect(data).toContain('"label":"Gaming hall","required":false');
     await expect(page.getByRole("status")).toContainText(
-      "Report photo requirements saved",
+      "Требования к фотографиям отчёта сохранены",
     );
-    await expect(page.getByLabel("Photo name 1", { exact: true })).toHaveValue(
-      "Reception desk",
-    );
+    await expect(
+      page.getByLabel("Название фотографии 1", { exact: true }),
+    ).toHaveValue("Reception desk");
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -76,14 +101,18 @@ test("closing a shift uses its configured named fields", async ({ page }) => {
     ],
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Close shift", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
   await expect(
-    page.getByLabel("Administrator desk", { exact: true }),
+    page.getByLabel("Стол администратора", { exact: true }),
   ).toHaveCount(0);
-  for (const label of ["Cash total", "Card total", "SBP total"])
+  for (const label of ["Наличные: сумма", "Карта: сумма", "СБП: сумма"])
     await page.getByLabel(label, { exact: true }).fill("0");
-  await page.getByRole("button", { name: "Close shift", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("required field");
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("обязательные поля");
   await page
     .getByLabel("Reception desk", { exact: true })
     .setInputFiles({ name: "desk.png", mimeType: "image/png", buffer: photo });
@@ -93,10 +122,12 @@ test("closing a shift uses its configured named fields", async ({ page }) => {
   const sent = page.waitForRequest((r) =>
     r.url().endsWith("/api/shifts/shift-1/close/"),
   );
-  await page.getByRole("button", { name: "Close shift", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
   expect((await sent).postData()).toContain('["reception"]');
   await expect(
-    page.getByRole("button", { name: "Open shift", exact: true }),
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
   ).toBeVisible();
 });
 
@@ -105,20 +136,24 @@ test("task creation supports specified photo fields", async ({
 }, info) => {
   await setup(page, { staff: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Create task", exact: true }).click();
-  await page.getByLabel("Task title", { exact: true }).fill("Clean reception");
   await page
-    .getByLabel("Task instructions", { exact: true })
+    .getByRole("button", { name: "Создать задачу", exact: true })
+    .click();
+  await page
+    .getByLabel("Название задачи", { exact: true })
+    .fill("Clean reception");
+  await page
+    .getByLabel("Инструкции к задаче", { exact: true })
     .fill("Clean and attach before/after photos.");
   await page
-    .getByLabel("Task photo requirements", { exact: true })
+    .getByLabel("Требования к фото задачи", { exact: true })
     .selectOption("named");
   for (let index = 0; index < namedFields.length; index += 1) {
     await page
-      .getByRole("button", { name: "Add photo field", exact: true })
+      .getByRole("button", { name: "Добавить поле для фото", exact: true })
       .click();
     await page
-      .getByLabel(`Photo name ${index + 1}`, { exact: true })
+      .getByLabel(`Название фотографии ${index + 1}`, { exact: true })
       .fill(namedFields[index].label);
   }
   await page.screenshot({
@@ -128,7 +163,9 @@ test("task creation supports specified photo fields", async ({
   const sent = page.waitForRequest(
     (r) => r.url().endsWith("/api/tasks/") && r.method() === "POST",
   );
-  await page.getByRole("button", { name: "Assign task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Назначить задачу", exact: true })
+    .click();
   const body = (await sent).postData()!;
   expect(body).toContain('name="photo_mode"\r\n\r\nnamed');
   expect(body).toContain('"label":"Before cleaning","required":true');
@@ -140,18 +177,18 @@ test("named task uploads enforce every required field and show all moderation ph
 }, info) => {
   await setup(page, { photoMode: "named", taskPhotoFields: namedFields });
   await page.goto("/");
-  await page.getByRole("button", { name: /Clean the stations/ }).click();
-  await page
-    .getByLabel("Before cleaning", { exact: true })
-    .setInputFiles({
-      name: "before.png",
-      mimeType: "image/png",
-      buffer: photo,
-    });
+  await page.getByRole("button", { name: /Убрать игровые места/ }).click();
+  await page.getByLabel("Before cleaning", { exact: true }).setInputFiles({
+    name: "before.png",
+    mimeType: "image/png",
+    buffer: photo,
+  });
   await expect(
     page.getByRole("img", { name: "Before cleaning", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть задачу", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toContainText("After cleaning");
   await page
     .getByLabel("After cleaning", { exact: true })
@@ -166,11 +203,11 @@ test("named task uploads enforce every required field and show all moderation ph
   const sent = page.waitForRequest((r) =>
     r.url().endsWith("/api/tasks/task-1/submit/"),
   );
-  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть задачу", exact: true })
+    .click();
   expect((await sent).postData()).toContain('["before","after"]');
-  await expect(page.locator(".cp-review-notice")).toContainText(
-    "On moderation",
-  );
+  await expect(page.locator(".cp-review-notice")).toContainText("На проверке");
   await expect(
     page.getByRole("img", { name: "Before cleaning", exact: true }),
   ).toBeVisible();
@@ -184,25 +221,27 @@ test("multiple unspecified task photos can be selected together", async ({
 }) => {
   await setup(page, { photoMode: "multiple" });
   await page.goto("/");
-  await page.getByRole("button", { name: /Clean the stations/ }).click();
-  await page.getByLabel("Completion photos", { exact: true }).setInputFiles([
-    { name: "one.png", mimeType: "image/png", buffer: photo },
-    { name: "two.png", mimeType: "image/png", buffer: photo },
-  ]);
+  await page.getByRole("button", { name: /Убрать игровые места/ }).click();
+  await page
+    .getByLabel("Фотографии выполнения", { exact: true })
+    .setInputFiles([
+      { name: "one.png", mimeType: "image/png", buffer: photo },
+      { name: "two.png", mimeType: "image/png", buffer: photo },
+    ]);
   await expect(
-    page.getByRole("img", { name: "Completion photo 1", exact: true }),
+    page.getByRole("img", { name: "Фото выполнения 1", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "Completion photo 2", exact: true }),
+    page.getByRole("img", { name: "Фото выполнения 2", exact: true }),
   ).toBeVisible();
   const sent = page.waitForRequest((r) =>
     r.url().endsWith("/api/tasks/task-1/submit/"),
   );
-  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть задачу", exact: true })
+    .click();
   expect((await sent).postData()?.match(/name="photos"/g)).toHaveLength(2);
-  await expect(page.locator(".cp-review-notice")).toContainText(
-    "On moderation",
-  );
+  await expect(page.locator(".cp-review-notice")).toContainText("На проверке");
 });
 
 const photo = Buffer.from(
@@ -321,9 +360,9 @@ async function setup(
   let contactChecks = 0;
   let photoSettings = {
     reportFields: options.reportFields || [
-      { id: "desk", label: "Administrator desk", required: true },
-      { id: "receipt", label: "Closing receipt", required: true },
-      { id: "additional", label: "Additional photo", required: false },
+      { id: "desk", label: "Стол администратора", required: true },
+      { id: "receipt", label: "Чек закрытия смены", required: true },
+      { id: "additional", label: "Дополнительное фото", required: false },
     ],
     version: 1,
   };
@@ -420,10 +459,15 @@ async function setup(
                   initials: "АС",
                   role,
                 },
-                { id: "2", name: "Manager", initials: "M", role: "manager" },
+                {
+                  id: "2",
+                  name: "Управляющий",
+                  initials: "M",
+                  role: "manager",
+                },
                 {
                   id: "3",
-                  name: "Shift Administrator",
+                  name: "Администратор смены",
                   initials: "SA",
                   role: "admin",
                 },
@@ -446,7 +490,7 @@ async function setup(
                 tasks: [
                   {
                     id: "task-1",
-                    title: "Clean the stations",
+                    title: "Убрать игровые места",
                     description: "Wipe keyboards",
                     adminId: "1",
                     managerId: "2",
@@ -479,7 +523,7 @@ async function setup(
         slot,
         label:
           options.taskPhotoFields?.find((field) => field.id === slot)?.label ||
-          "Completion photo",
+          "Фото выполнения",
         url: `/api/files/submission-photo/${index + 1}/`,
       }));
     }
@@ -519,15 +563,15 @@ test("Telegram login opens the live Mini App without sample accounts", async ({
   await setup(page);
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Current shift" }),
+    page.getByRole("heading", { name: "Текущая смена" }),
   ).toBeVisible();
   await expect(
     page
-      .getByRole("navigation", { name: "Main navigation" })
+      .getByRole("navigation", { name: "Основная навигация" })
       .getByRole("button"),
   ).toHaveCount(3);
   await expect(
-    page.getByRole("heading", { name: /Night shift/ }),
+    page.getByRole("heading", { name: /Ночная смена/ }),
   ).toBeVisible();
   await expect(page.locator(".cp-profile")).toHaveText("Алексей Смирнов");
   await expect(page.locator(".cp-avatar")).toHaveCount(0);
@@ -593,7 +637,7 @@ test("new staff confirm their phone in the Mini App and register a username", as
     phone_number: "9991234567",
   });
   await expect(
-    page.getByRole("heading", { name: "Current shift" }),
+    page.getByRole("heading", { name: "Текущая смена" }),
   ).toBeVisible();
 });
 
@@ -645,7 +689,7 @@ test("equipment categories, rows and details use their matching device icons", a
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Devices", exact: true })
+    .getByRole("button", { name: "Устройства", exact: true })
     .click();
   for (const [resource, title, icon] of categories) {
     const tab = page
@@ -672,21 +716,29 @@ test("shift opening and closing use real endpoints and fixed opening type", asyn
 }) => {
   await setup(page, { noShift: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open shift", exact: true }).click();
-  await page.getByRole("radio", { name: /Night shift/ }).check();
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  await page.getByRole("radio", { name: /Ночная смена/ }).check();
   const opened = page.waitForRequest(
     (r) => r.url().endsWith("/api/shifts/open/") && r.method() === "POST",
   );
-  await page.getByRole("button", { name: "Open shift", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
   expect((await opened).postData()).toContain('name="shift_type"');
-  await page.getByRole("button", { name: "Close shift", exact: true }).click();
-  await expect(page.locator(".cp-closing-shift")).toContainText("Night shift");
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(page.locator(".cp-closing-shift")).toContainText("Ночная смена");
   await expect(page.getByRole("radio")).toHaveCount(0);
-  for (const label of ["Cash total", "Card total", "SBP total"])
+  for (const label of ["Наличные: сумма", "Карта: сумма", "СБП: сумма"])
     await page.getByLabel(label, { exact: true }).fill("10.50");
-  await page.getByRole("button", { name: "Close shift", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("required field");
-  for (const label of ["Administrator desk", "Closing receipt"])
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("обязательные поля");
+  for (const label of ["Стол администратора", "Чек закрытия смены"])
     await page.getByLabel(label, { exact: true }).setInputFiles({
       name: "photo.png",
       mimeType: "image/png",
@@ -696,14 +748,16 @@ test("shift opening and closing use real endpoints and fixed opening type", asyn
     (r) =>
       r.url().endsWith("/api/shifts/shift-1/close/") && r.method() === "POST",
   );
-  await page.getByRole("button", { name: "Close shift", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
   const command = await closed;
   expect(command.headers()["idempotency-key"]).toBeTruthy();
   expect(command.postData()?.match(/name="photos"/g)).toHaveLength(2);
   expect(command.postData()).toContain('["desk","receipt"]');
   expect(command.postData()).not.toContain('name="shift_type"');
   await expect(
-    page.getByRole("button", { name: "Open shift", exact: true }),
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
   ).toBeVisible();
 });
 
@@ -712,20 +766,22 @@ test("expense requires text and submits cash deduction without a photo", async (
 }) => {
   await setup(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Add expense", exact: true }).click();
-  await page.getByLabel("Expense amount", { exact: true }).fill("50");
   await page
-    .getByRole("button", { name: "Record expense", exact: true })
+    .getByRole("button", { name: "Добавить расход", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toContainText("Describe");
+  await page.getByLabel("Сумма расхода", { exact: true }).fill("50");
   await page
-    .getByLabel("Expense description", { exact: true })
+    .getByRole("button", { name: "Сохранить расход", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("Укажите");
+  await page
+    .getByLabel("Описание расхода", { exact: true })
     .fill("Cleaning supplies");
   const sent = page.waitForRequest(
     (r) => r.url().endsWith("/api/shift-expenses/") && r.method() === "POST",
   );
   await page
-    .getByRole("button", { name: "Record expense", exact: true })
+    .getByRole("button", { name: "Сохранить расход", exact: true })
     .click();
   expect((await sent).postData()).toContain("50.00");
   await expect(page.getByText("950 ₽", { exact: true })).toBeVisible();
@@ -736,29 +792,31 @@ test("task submission requires evidence and stays on moderation", async ({
 }) => {
   await setup(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /Clean the stations/ }).click();
-  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  await page.getByRole("button", { name: /Убрать игровые места/ }).click();
+  await page
+    .getByRole("button", { name: "Закрыть задачу", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toContainText(
-    "required completion photo",
+    "обязательное фото выполнения",
   );
   await page
-    .getByLabel("Completion photo", { exact: true })
+    .getByLabel("Фото выполнения", { exact: true })
     .setInputFiles({ name: "done.png", mimeType: "image/png", buffer: photo });
   const sent = page.waitForRequest(
     (r) =>
       r.url().endsWith("/api/tasks/task-1/submit/") && r.method() === "POST",
   );
-  await page.getByRole("button", { name: "Close task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть задачу", exact: true })
+    .click();
   expect((await sent).postData()).toContain('name="photos"');
-  await expect(page.locator(".cp-review-notice")).toContainText(
-    "On moderation",
-  );
+  await expect(page.locator(".cp-review-notice")).toContainText("На проверке");
   await page.evaluate(() =>
     (window as unknown as { testBack: () => void }).testBack(),
   );
   await expect(
-    page.getByRole("button", { name: /Clean the stations/ }),
-  ).toContainText("On moderation");
+    page.getByRole("button", { name: /Убрать игровые места/ }),
+  ).toContainText("На проверке");
 });
 
 test("failed save preserves draft and retry uses the same command key", async ({
@@ -766,25 +824,25 @@ test("failed save preserves draft and retry uses the same command key", async ({
 }) => {
   await setup(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Add expense", exact: true }).click();
-  await page.getByLabel("Expense amount", { exact: true }).fill("50");
   await page
-    .getByLabel("Expense description", { exact: true })
-    .fill("Supplies");
+    .getByRole("button", { name: "Добавить расход", exact: true })
+    .click();
+  await page.getByLabel("Сумма расхода", { exact: true }).fill("50");
+  await page.getByLabel("Описание расхода", { exact: true }).fill("Supplies");
   const keys: string[] = [];
   await page.route("**/api/shift-expenses/", (route) => {
     keys.push(route.request().headers()["idempotency-key"]);
     return route.fulfill({ status: 503, json: { detail: "Try again" } });
   });
   await page
-    .getByRole("button", { name: "Record expense", exact: true })
+    .getByRole("button", { name: "Сохранить расход", exact: true })
     .click();
   await expect(page.getByRole("alert")).toContainText("Try again");
   await expect(
-    page.getByLabel("Expense description", { exact: true }),
+    page.getByLabel("Описание расхода", { exact: true }),
   ).toHaveValue("Supplies");
   await page
-    .getByRole("button", { name: "Record expense", exact: true })
+    .getByRole("button", { name: "Сохранить расход", exact: true })
     .click();
   await expect.poll(() => keys.length).toBe(2);
   expect(keys[0]).toBe(keys[1]);
@@ -795,7 +853,7 @@ test("workspace server errors offer retry", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("Сервер недоступен");
   await expect(
-    page.getByRole("button", { name: "Retry", exact: true }),
+    page.getByRole("button", { name: "Повторить", exact: true }),
   ).toBeVisible();
 });
 test("regular users can scan and download QR labels without equipment write controls", async ({
@@ -805,7 +863,7 @@ test("regular users can scan and download QR labels without equipment write cont
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Devices", exact: true })
+    .getByRole("button", { name: "Устройства", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Добавить", exact: true }),
@@ -847,7 +905,7 @@ test("QR browser fallback saves a real PNG attachment without an API token", asy
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Devices", exact: true })
+    .getByRole("button", { name: "Устройства", exact: true })
     .click();
   await page.getByRole("button", { name: "Сканировать QR" }).click();
   await page.getByRole("button", { name: "Показать QR-код" }).click();
@@ -880,7 +938,7 @@ test("a failed QR download offers retry and keeps the device preview", async ({
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Devices", exact: true })
+    .getByRole("button", { name: "Устройства", exact: true })
     .click();
   await page.getByRole("button", { name: "Сканировать QR" }).click();
   await page.getByRole("button", { name: "Показать QR-код" }).click();
@@ -902,7 +960,7 @@ test("staff users can create equipment and light theme respects viewport", async
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Devices", exact: true })
+    .getByRole("button", { name: "Устройства", exact: true })
     .click();
   await page.screenshot({
     path: testInfo.outputPath("equipment-light.png"),
@@ -956,7 +1014,7 @@ test("station choices distinguish repeated models and preserve own assignments",
   await page.goto("/");
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "Devices", exact: true })
+    .getByRole("button", { name: "Устройства", exact: true })
     .click();
   await page.getByRole("button", { name: /Место 12/ }).click();
   await expect(page.locator(".detail-list")).toContainText("G Pro · SN-001");
