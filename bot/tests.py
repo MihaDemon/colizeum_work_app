@@ -6,15 +6,28 @@ import bot
 
 
 class ContactTests(unittest.IsolatedAsyncioTestCase):
+    async def test_start_only_offers_launch_and_removes_old_contact_keyboard(self):
+        message = SimpleNamespace(answer=AsyncMock())
+        with patch.dict('os.environ', {'WEBAPP_URL': 'https://test.invalid'}):
+            await bot.start(message)
+        welcome, launch = message.answer.await_args_list
+        self.assertTrue(welcome.kwargs['reply_markup'].remove_keyboard)
+        keyboard = launch.kwargs['reply_markup'].inline_keyboard
+        self.assertEqual(len(keyboard), 1)
+        self.assertEqual(len(keyboard[0]), 1)
+        self.assertEqual(keyboard[0][0].web_app.url, 'https://test.invalid')
+        self.assertNotIn('Verify', welcome.args[0] + launch.args[0])
+
     async def test_forwarded_contact_is_never_attested(self):
-        message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=102, phone_number='+79991234567'), answer=AsyncMock())
+        message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=102, phone_number='+79991234567'), answer=AsyncMock(), delete=AsyncMock())
         with patch('bot.aiohttp.ClientSession') as session:
             await bot.verify_contact(message)
         session.assert_not_called()
-        self.assertIn('own contact', message.answer.await_args.args[0])
+        message.answer.assert_not_awaited()
+        message.delete.assert_awaited_once()
 
     async def test_verified_contact_uses_internal_endpoint_and_service_secret(self):
-        message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=101, phone_number='+79991234567'), answer=AsyncMock())
+        message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=101, phone_number='+79991234567'), answer=AsyncMock(), delete=AsyncMock())
         response = MagicMock()
         response.__aenter__ = AsyncMock(return_value=SimpleNamespace(status=200))
         response.__aexit__ = AsyncMock(return_value=False)
@@ -26,13 +39,16 @@ class ContactTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict('os.environ', {'BOT_SERVICE_TOKEN': 'test-secret', 'BACKEND_URL': 'http://backend:8000', 'WEBAPP_URL': 'https://test.invalid'}), patch('bot.aiohttp.ClientSession', return_value=context):
             await bot.verify_contact(message)
         session.post.assert_called_once_with('http://backend:8000/api/bot/contact/', json={'telegram_id': '101', 'phone_number': '+79991234567'}, headers={'X-Bot-Service-Token': 'test-secret'})
-        self.assertEqual(message.answer.await_count, 2)
+        message.answer.assert_not_awaited()
+        message.delete.assert_awaited_once()
 
     async def test_verification_connection_failure_is_reported_without_contact_details(self):
-        message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=101, phone_number='+79991234567'), answer=AsyncMock())
-        with patch.dict('os.environ', {'BOT_SERVICE_TOKEN': 'test'}), patch('bot.aiohttp.ClientSession', side_effect=bot.aiohttp.ClientError()):
+        message = SimpleNamespace(from_user=SimpleNamespace(id=101), contact=SimpleNamespace(user_id=101, phone_number='+79991234567'), answer=AsyncMock(), delete=AsyncMock())
+        with patch.dict('os.environ', {'BOT_SERVICE_TOKEN': 'test'}), patch('bot.aiohttp.ClientSession', side_effect=bot.aiohttp.ClientError()), self.assertLogs(level='WARNING') as logs:
             await bot.verify_contact(message)
-        self.assertIn('Cannot reach', message.answer.await_args.args[0])
+        self.assertNotIn('9991234567', str(logs.output))
+        message.answer.assert_not_awaited()
+        message.delete.assert_awaited_once()
 
 
 if __name__ == '__main__':

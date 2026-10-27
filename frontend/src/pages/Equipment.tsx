@@ -6,8 +6,9 @@ import {
   IconDownload,
   IconPencil,
   IconTrash,
-  IconDeviceDesktop,
 } from "@tabler/icons-react";
+import { DeviceIcon } from "../components/DeviceIcon";
+import { downloadDeviceQr } from "../lib/download";
 import { list, request } from "../lib/api";
 import { telegram, inTelegram, haptic } from "../lib/telegram";
 import { useList } from "../lib/useList";
@@ -232,6 +233,7 @@ export function Equipment({
               setActionError("");
             }}
           >
+            <DeviceIcon resource={entry.key} size={18} />
             {entry.title}
           </button>
         ))}
@@ -264,7 +266,10 @@ export function Equipment({
                   setActionError("");
                 }}
               >
-                <IconDeviceDesktop size={resource === "stations" ? 30 : 24} />
+                <DeviceIcon
+                  resource={resource}
+                  size={resource === "stations" ? 30 : 24}
+                />
                 <div>
                   <strong>
                     {resource === "stations"
@@ -331,6 +336,7 @@ function DeviceDetails({
 }) {
   const [qr, setQr] = useState("");
   const [qrLoading, setQrLoading] = useState(false);
+  const [qrDownloading, setQrDownloading] = useState(false);
   const [related, setRelated] = useState<Record<string, Device>>({});
   const [relatedError, setRelatedError] = useState("");
   useEffect(() => {
@@ -379,6 +385,18 @@ function DeviceDetails({
       setQrLoading(false);
     }
   };
+  const downloadQr = async () => {
+    if (qrDownloading) return;
+    setQrDownloading(true);
+    setError("");
+    try {
+      await downloadDeviceQr(resource, device.id);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setQrDownloading(false);
+    }
+  };
   const title =
     resource === "stations"
       ? `Место ${device.club_number}`
@@ -390,7 +408,12 @@ function DeviceDetails({
     <>
       <Back onClick={onClose} />
       <PageHeading
-        title={title}
+        title={
+          <span className="device-title">
+            <DeviceIcon resource={resource} size={28} />
+            {title}
+          </span>
+        }
         subtitle={device.serial_number || "Комплектация рабочего места"}
         action={
           user.is_staff && (
@@ -422,9 +445,12 @@ function DeviceDetails({
               </div>
             ))}
           {resource === "stations" &&
-            links.map(([field, , label]) => (
+            links.map(([field, collection, label]) => (
               <div key={field}>
-                <dt>{label}</dt>
+                <dt className="device-title">
+                  <DeviceIcon resource={collection} size={18} />
+                  {label}
+                </dt>
                 <dd>
                   {device[field]
                     ? related[field]
@@ -459,14 +485,14 @@ function DeviceDetails({
               </button>
             )}
             {qr && (
-              <a
+              <button
                 className="secondary-button"
-                href={qr}
-                download={`${resource}-${device.id}-qr.png`}
+                disabled={qrDownloading}
+                onClick={() => void downloadQr()}
               >
                 <IconDownload size={20} />
-                Скачать PNG
-              </a>
+                {qrDownloading ? "Подготавливаем…" : "Скачать PNG"}
+              </button>
             )}
           </div>
           {qr && <img className="qr-image" src={qr} alt={`QR-код: ${title}`} />}

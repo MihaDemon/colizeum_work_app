@@ -89,12 +89,15 @@ html.mini-app-page,
 }
 .cp-header {
   display: flex;
+  gap: 16px;
   align-items: center;
   justify-content: space-between;
   padding: calc(16px + max(env(safe-area-inset-top, 0px), var(--safe-top, 0px)))
     max(22px, var(--safe-right, 0px)) 14px max(22px, var(--safe-left, 0px));
 }
 .cp-brand {
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--cp-text);
   font-size: 15px;
   font-weight: 800;
@@ -109,31 +112,16 @@ html.mini-app-page,
   letter-spacing: 0.06em;
 }
 .cp-profile {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: transparent;
-}
-.cp-avatar {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--cp-panel);
-  border: 1px solid var(--cp-line);
-  border-radius: 50%;
+  min-height: 44px;
+  min-width: 0;
+  max-width: 60%;
+  padding: 8px 0 8px 12px;
   color: var(--cp-text);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  flex: 0 0 auto;
-}
-.cp-avatar-sm {
-  width: 24px;
-  height: 24px;
-  font-size: 9px;
+  text-align: right;
+  overflow-wrap: anywhere;
+  background: transparent;
 }
 .cp-content {
   padding: 12px max(22px, var(--safe-right, 0px))
@@ -467,11 +455,6 @@ html.mini-app-page,
   align-items: center;
   gap: 14px;
   padding-bottom: 25px;
-}
-.cp-account > .cp-avatar {
-  width: 44px;
-  height: 44px;
-  font-size: 14px;
 }
 .cp-account strong {
   font-size: 16px;
@@ -1194,10 +1177,6 @@ html.mini-app-page,
 }
 .cp-workspace-controls:disabled {
   opacity: 0.65;
-}
-.cp-avatar {
-  background: var(--cp-soft, #e9edf2);
-  color: var(--cp-text, #20242b);
 }
 .cp-live-equipment .page-heading {
   flex-wrap: wrap;

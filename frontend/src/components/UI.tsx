@@ -123,7 +123,7 @@ export function PageHeading({
   subtitle,
   action,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle: string;
   action?: ReactNode;
 }) {

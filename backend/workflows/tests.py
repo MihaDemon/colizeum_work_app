@@ -264,6 +264,54 @@ class AuthSafetyTests(APITestCase):
         User.objects.create(username='second')
         User.objects.create(username='third')
 
+    def test_contact_status_requires_valid_telegram_data(self):
+        AdminUser.objects.create(phone_number='9991234567', telegram_id='3')
+        for payload, expected in [
+            ({}, 400),
+            ({'initData': 'forged'}, 403),
+            ({'initData': self.signed({'id': 3}, age=4000)}, 403),
+            ({'initData': self.signed({'id': True})}, 400),
+        ]:
+            with self.subTest(payload=payload):
+                response = self.client.post('/api/telegram/contact-status/', payload)
+                self.assertEqual(response.status_code, expected)
+                self.assertNotIn('phone_number', response.data)
+
+    def test_contact_status_only_returns_the_signed_users_bound_phone(self):
+        AdminUser.objects.create(phone_number='9991234567', telegram_id='3')
+        response = self.client.post('/api/telegram/contact-status/', {'initData': self.signed({'id': 4}), 'telegram_id': '3'})
+        self.assertEqual(response.data, {'verified': False})
+        response = self.client.post('/api/telegram/contact-status/', {'initData': self.signed({'id': 3})})
+        self.assertEqual(response.data, {'verified': True, 'phone_number': '9991234567'})
+        self.assertEqual(response['Cache-Control'], 'no-store')
+
+    @override_settings(BOT_SERVICE_TOKEN='test-service')
+    def test_mini_app_contact_confirmation_registration_and_repeat_login(self):
+        AdminUser.objects.create(phone_number='9991234567', role='manager')
+        signed = self.signed({'id': 3})
+        response = self.client.post('/api/telegram/telegram/', {'initData': signed})
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(response.data['require_registration'])
+        self.assertEqual(self.client.post('/api/telegram/contact-status/', {'initData': signed}).data, {'verified': False})
+        response = self.client.post('/api/bot/contact/', {'telegram_id': '3', 'phone_number': '+79991234567'}, HTTP_X_BOT_SERVICE_TOKEN='test-service')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.post('/api/telegram/contact-status/', {'initData': signed}).data['phone_number'], '9991234567')
+        response = self.client.post('/api/telegram/telegram/', {'initData': signed, 'username': 'staff', 'phone_number': '9991234567'})
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(User.objects.get().is_staff)
+        self.assertFalse(User.objects.get().has_usable_password())
+        token = response.data['token']
+        response = self.client.post('/api/telegram/telegram/', {'initData': signed})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['token'], token)
+        self.assertFalse(response.data['is_new_user'])
+
+    def test_registration_cannot_claim_another_verified_staff_phone(self):
+        AdminUser.objects.create(phone_number='9991234567', telegram_id='4')
+        response = self.client.post('/api/telegram/telegram/', {'initData': self.signed({'id': 3}), 'username': 'staff', 'phone_number': '9991234567'})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.exists())
+
 
 class ShiftConcurrencyTests(TransactionTestCase):
     @skipUnlessDBFeature('has_select_for_update')

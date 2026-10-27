@@ -1,16 +1,14 @@
 import json
 from collections.abc import Mapping
-from io import BytesIO
 from urllib.parse import parse_qsl
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
-from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -18,7 +16,8 @@ from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, S
 from rest_framework.response import Response
 
 from api.utils import validate_telegram_data
-from api.qr import get_device_detail_url
+from api.qr import qr_png_response
+from api.downloads import qr_download_link
 from api.serializers import (
     CashRegisterSerializer, ExpensePhotoSerializer, ExpensesSerializer, HeadsetSerializer,
     KeyboardSerializer, MonitorSerializer, MouseSerializer, PCSerializer,
@@ -34,36 +33,39 @@ User = get_user_model()
 
 
 class AuthViewSet(viewsets.ViewSet):
-    @action(detail=False, methods=['post'], url_path='telegram', permission_classes=[AllowAny])
-    def telegram(self, request):
-        """
-        Handle Telegram authentication.
-        """
+    @staticmethod
+    def telegram_id(request):
         if not isinstance(request.data, Mapping):
             raise ValidationError({'error': 'Expected an object.'})
         init_data = request.data.get('initData')
         bot_token = settings.TELEGRAM_BOT_TOKEN
 
         if not init_data:
-            return Response(
-                {'error': 'Данные Telegram не предоставлены'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            raise ValidationError({'error': 'Данные Telegram не предоставлены'})
 
         if not validate_telegram_data(init_data, bot_token):
-            return Response(
-                {'error': 'Неверные данные Telegram'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            raise PermissionDenied({'error': 'Неверные данные Telegram'})
 
         try:
             user_data = json.loads(dict(parse_qsl(init_data)).get('user', '{}'))
             ident = user_data.get('id')
             if isinstance(ident, bool) or not isinstance(ident, int) or ident <= 0:
                 raise ValueError
-            telegram_id = str(ident)
+            return str(ident)
         except (ValueError, TypeError, AttributeError):
             raise ValidationError({'error': 'Нет Telegram ID в данных'})
+
+    @action(detail=False, methods=['post'], url_path='contact-status', permission_classes=[AllowAny], authentication_classes=[])
+    def contact_status(self, request):
+        ident = self.telegram_id(request)
+        contact = AdminUser.objects.filter(telegram_id=ident).first()
+        response = Response({'verified': True, 'phone_number': contact.pk} if contact else {'verified': False})
+        response['Cache-Control'] = 'no-store'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='telegram', permission_classes=[AllowAny], authentication_classes=[])
+    def telegram(self, request):
+        telegram_id = self.telegram_id(request)
         user = User.objects.filter(telegram_id=telegram_id).first()
         if user:
             if not user.is_active:
@@ -86,7 +88,7 @@ class AuthViewSet(viewsets.ViewSet):
             with transaction.atomic():
                 contact = AdminUser.objects.select_for_update().filter(pk=phone).first()
                 if not contact or contact.telegram_id != telegram_id:
-                    raise PermissionDenied('First share your own phone number with the bot. Your manager must add it to the staff list.')
+                    raise PermissionDenied('Подтвердите свой номер через Telegram в приложении. Управляющий должен добавить вас в список сотрудников.')
                 if User.objects.filter(phone_number=contact).exists():
                     raise ValidationError({'phone_number': 'This phone is already registered.'})
                 user = User.objects.create_user(username=registration.validated_data['username'], phone_number=contact,
@@ -134,18 +136,14 @@ class DeviceViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='qr-code')
     def qr_code(self, request, pk=None):
         """Generate a printable PNG encoding the identifier-based detail URL."""
-        import segno
-
         device = self.get_object()
-        buffer = BytesIO()
-        segno.make_qr(get_device_detail_url(device, request)).save(
-            buffer, kind='png', scale=8, border=4, dark='black', light='white',
-        )
-        response = HttpResponse(buffer.getvalue(), content_type='image/png')
-        response['Content-Disposition'] = (
-            f'inline; filename="{device._meta.model_name}-{device.pk}-qr.png"'
-        )
-        response['Cache-Control'] = 'private, no-store'
+        return qr_png_response(device, request)
+
+    @action(detail=True, methods=['get'], url_path='qr-download')
+    def qr_download(self, request, pk=None):
+        device = self.get_object()
+        response = Response(qr_download_link(device, request.user, request))
+        response['Cache-Control'] = 'no-store'
         return response
 
 

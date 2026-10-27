@@ -37,6 +37,9 @@ interface TelegramWebApp {
     callback: (text: string) => boolean,
   ): void;
   closeScanQrPopup(): void;
+  requestContact?(callback: (shared: boolean) => void): void;
+  downloadFile?(params: { url: string; file_name: string }): void;
+  openLink?(url: string): void;
 }
 declare global {
   interface Window {

@@ -356,6 +356,9 @@ fieldset {
   margin-bottom: 16px;
 }
 .resource-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-height: 44px;
   flex-shrink: 0;
   padding: 10px 15px;
@@ -425,6 +428,17 @@ fieldset {
 .equipment-row > div {
   flex: 1;
   min-width: 0;
+}
+.device-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.resource-tabs svg,
+.station-tile > svg,
+.equipment-row > svg,
+.device-title svg {
+  flex-shrink: 0;
 }
 .equipment-row strong,
 .equipment-row small {

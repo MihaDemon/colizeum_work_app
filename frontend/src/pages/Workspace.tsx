@@ -92,16 +92,6 @@ export interface WorkspaceProps {
   perform: (action: Action) => Promise<void>;
   logout: () => void;
 }
-function Avatar({ id, small = false }: { id: string; small?: boolean }) {
-  const { person } = usePeople();
-  const p = person(id);
-  return (
-    <span className={`cp-avatar${small ? " cp-avatar-sm" : ""}`} title={p.name}>
-      {p.initials}
-    </span>
-  );
-}
-
 function Status({ status }: { status: Task["status"] }) {
   return (
     <span className={`cp-status cp-status-${status}`}>
@@ -410,13 +400,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         </span>
         <button
           className="cp-profile"
-          aria-label="Open more"
+          aria-label={`Open more: ${user.name}`}
           onClick={() => {
             if (!dirty || window.confirm("Discard your unsaved changes?"))
               navigate("more");
           }}
         >
-          <Avatar id={user.id} />
+          {user.name}
         </button>
       </header>
       <main id="workspace-content" className="cp-content">
@@ -644,7 +634,6 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     <h1>More</h1>
                   </div>
                   <div className="cp-account">
-                    <Avatar id={user.id} />
                     <div>
                       <strong>{user.name}</strong>
                       <p>
@@ -1479,7 +1468,6 @@ function WorkflowForm({
                 </fieldset>
               )}
               <div className="cp-form-info">
-                <Avatar id={user.id} small />
                 <span>{user.name}</span>
                 <span>{dateLabel(new Date().toISOString())}</span>
               </div>

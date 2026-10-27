@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   IconArrowUpRight,
   IconBrandTelegram,
   IconShieldCheck,
+  IconPhone,
 } from "@tabler/icons-react";
 import { ErrorNotice } from "./UI";
 import { telegram } from "../lib/telegram";
+import { verifyTelegramContact } from "../lib/auth";
 
 export function Auth({
   state,
@@ -26,6 +28,24 @@ export function Auth({
   );
   const [phone, setPhone] = useState("");
   const [localError, setLocalError] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const verification = useRef<AbortController | null>(null);
+  useEffect(() => () => verification.current?.abort(), []);
+  const confirmPhone = async () => {
+    if (verifying || busy) return;
+    const controller = new AbortController();
+    verification.current = controller;
+    setVerifying(true);
+    setLocalError("");
+    try {
+      const confirmedPhone = await verifyTelegramContact(controller.signal);
+      if (!controller.signal.aborted) setPhone(confirmedPhone);
+    } catch (err) {
+      if (!controller.signal.aborted) setLocalError((err as Error).message);
+    } finally {
+      if (!controller.signal.aborted) setVerifying(false);
+    }
+  };
   return (
     <main className="auth-layout">
       <div className="auth-intro">
@@ -47,12 +67,12 @@ export function Auth({
         <IconBrandTelegram size={36} className="accent" />
         <h2>
           {state === "register"
-            ? "Регистрация администратора"
+            ? "Регистрация сотрудника"
             : "Вход через Telegram"}
         </h2>
         <p>
           {state === "register"
-            ? "Сначала отправьте свой номер кнопкой «Verify my phone number» в боте. Затем укажите логин и 10 цифр подтверждённого номера."
+            ? "Укажите рабочий логин и подтвердите свой номер через Telegram. Управляющий должен заранее добавить вас в список сотрудников."
             : "Откройте приложение через кнопку в Telegram-боте. Ваш аккаунт используется для входа."}
         </p>
         <ErrorNotice message={localError || error} />
@@ -60,9 +80,10 @@ export function Auth({
           <form
             onSubmit={(event) => {
               event.preventDefault();
+              if (busy || verifying) return;
               setLocalError("");
               if (!/^\d{10}$/.test(phone)) {
-                setLocalError("Введите 10 цифр телефона без +7.");
+                setLocalError("Подтвердите свой номер через Telegram.");
                 return;
               }
               if (!username.trim()) {
@@ -80,6 +101,7 @@ export function Auth({
               <input
                 name="username"
                 required
+                disabled={busy || verifying}
                 maxLength={20}
                 autoComplete="username"
                 value={username}
@@ -87,29 +109,41 @@ export function Auth({
                 placeholder="Ваш рабочий логин"
               />
             </label>
-            <label>
-              Номер телефона
-              <div className="phone-input">
-                <span>+7</span>
-                <input
-                  name="phone_number"
-                  aria-label="Номер телефона"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  required
-                  maxLength={10}
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-                  placeholder="999 000 00 00"
-                />
-              </div>
-            </label>
-            <p className="field-hint">
-              10 цифр без кода страны. Номер должен быть заранее добавлен
-              администратором.
-            </p>
-            <button className="primary-button wide" disabled={busy}>
+            {phone ? (
+              <label>
+                Номер телефона
+                <div className="phone-input">
+                  <span>+7</span>
+                  <input
+                    name="phone_number"
+                    aria-label="Номер телефона"
+                    type="tel"
+                    autoComplete="tel-national"
+                    readOnly
+                    value={phone}
+                  />
+                </div>
+              </label>
+            ) : (
+              <button
+                className="secondary-button wide"
+                type="button"
+                disabled={busy || verifying}
+                onClick={() => void confirmPhone()}
+              >
+                <IconPhone size={20} />
+                {verifying ? "Проверяем контакт…" : "Подтвердить телефон Telegram"}
+              </button>
+            )}
+            {phone && (
+              <p className="field-hint" role="status">
+                Телефон подтверждён через Telegram.
+              </p>
+            )}
+            <button
+              className="primary-button wide"
+              disabled={busy || verifying || !phone}
+            >
               {busy ? "Регистрируем…" : "Начать работу"}
               <IconArrowUpRight size={20} />
             </button>
