@@ -136,7 +136,7 @@ class WorkflowTests(APITestCase):
 
     def test_assignment_roles_and_manager_personal_tasks_without_shift(self):
         self.act_as(self.manager)
-        self.assertEqual(self.client.post('/api/tasks/', {'title': 'No shift', 'assignee': self.admin.pk}).status_code, 403)
+        self.assertEqual(self.client.post('/api/tasks/', {'title': 'No shift', 'assignee': self.admin.pk}).status_code, 201)
         self.act_as(self.owner)
         for target in [self.owner]:
             self.assertEqual(self.client.post('/api/tasks/', {'title': 'Self', 'assignee': target.pk}).status_code, 403)
@@ -157,7 +157,8 @@ class WorkflowTests(APITestCase):
     def test_manager_cannot_assign_other_staff_or_managers(self):
         self.open()
         self.act_as(self.manager)
-        for target in [self.other, self.manager2, self.owner]:
+        self.assertEqual(self.client.post('/api/tasks/', {'title': 'Off shift', 'assignee': self.other.pk}).status_code, 201)
+        for target in [self.manager2, self.owner]:
             self.assertEqual(self.client.post('/api/tasks/', {'title': 'Invalid', 'assignee': target.pk}).status_code, 403)
         self.act_as(self.admin)
         self.assertEqual(self.client.post('/api/tasks/', {'title': 'Invalid', 'assignee': self.other.pk}).status_code, 403)

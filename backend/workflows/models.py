@@ -41,6 +41,7 @@ class Shift(UserHistory):
 
 
 class Task(UserHistory):
+    deleted_at = models.DateTimeField(null=True, blank=True, editable=False, verbose_name="Удалена")
     class Status(models.TextChoices):
         ACTIVE = 'active', 'К выполнению'
         MODERATION = 'moderation', 'На проверке'

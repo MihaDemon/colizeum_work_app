@@ -6,6 +6,7 @@ def role(user):
 
 
 def visible_tasks(user, queryset):
+    queryset = queryset.filter(deleted_at__isnull=True)
     if user.is_superuser:
         return queryset
     return queryset.filter(Q(creator=user) | Q(assignee=user))

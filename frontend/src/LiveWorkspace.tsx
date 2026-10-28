@@ -85,6 +85,9 @@ export default function LiveWorkspace({ account }: { account: User }) {
       let path = "";
       const body = new FormData();
       switch (action.type) {
+        case "DELETE_TASK":
+          path = `tasks/${action.taskId}/`;
+          break;
         case "MARK_CLEANER":
           path = `shifts/${action.shiftId}/cleaner/`;
           body.append("confirmed", "true");
@@ -154,7 +157,7 @@ export default function LiveWorkspace({ account }: { account: User }) {
       if (retry.current?.signature !== signature)
         retry.current = { signature, key: crypto.randomUUID() };
       await request(path, {
-        method: "POST",
+        method: action.type === "DELETE_TASK" ? "DELETE" : "POST",
         body,
         headers: { "Idempotency-Key": retry.current.key },
       });

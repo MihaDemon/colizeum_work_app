@@ -312,7 +312,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       await workspace.perform(action);
       setDirty(false);
       if (closeForm) setForm(null);
-      if (action.type === "REVIEW_TASK" && action.accept) setSelectedTask(null);
+      if (
+        (action.type === "REVIEW_TASK" && action.accept) ||
+        action.type === "DELETE_TASK"
+      )
+        setSelectedTask(null);
       notify(message);
       return true;
     } catch (error) {
@@ -459,7 +463,6 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     {isManager ? (
                       <button
                         className="cp-button cp-button-primary"
-                        disabled={!state.shift && user.role !== "superuser"}
                         onClick={() => {
                           if (equipmentDraft.current.busy) return;
                           if (
@@ -1194,6 +1197,26 @@ function TaskDetails({
         </div>
         <Status status={task.status} />
       </div>
+      {task.status !== "accepted" &&
+        (user.role === "superuser" ||
+          (user.role === "manager" && task.managerId === user.id)) && (
+          <button
+            className="cp-button cp-button-danger"
+            onClick={async () => {
+              if (
+                await confirmAction(
+                  `Удалить задачу «${task.title}»? Она исчезнет из списков сотрудников.`,
+                )
+              )
+                onSave(
+                  { type: "DELETE_TASK", actorId: user.id, taskId: task.id },
+                  "Задача удалена.",
+                );
+            }}
+          >
+            Удалить задачу
+          </button>
+        )}
       <div className="cp-detail-layout">
         <section className="cp-form-panel">
           <h2>Описание задачи</h2>
@@ -1468,7 +1491,7 @@ function WorkflowForm({
       person.isActive !== false &&
       (user.role === "superuser"
         ? person.role === "admin" || person.role === "manager"
-        : person.role === "admin" && person.id === state.shift?.adminId),
+        : person.role === "admin"),
   );
   const [adminId, setAdminId] = useState(assignees[0]?.id || "");
   const headings = {
@@ -1484,7 +1507,7 @@ function WorkflowForm({
     create:
       user.role === "superuser"
         ? "Назначьте задачу администратору или управляющему."
-        : "Назначьте задачу администратору текущей смены.",
+        : "Назначьте задачу любому активному администратору.",
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -1567,10 +1590,6 @@ function WorkflowForm({
         "Смена закрыта, отчёт сохранён. Следующий администратор может открыть смену.",
       );
     } else {
-      if (!state.shift && user.role !== "superuser") {
-        setError("Чтобы назначить задачу, сначала нужно открыть смену.");
-        return;
-      }
       if (!assignees.some((person) => person.id === adminId)) {
         setError(
           "Выберите администратора или управляющего, которому можно назначить задачу.",
