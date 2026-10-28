@@ -30,7 +30,7 @@ class NotificationSettingsTests(APITestCase):
     def test_settings_are_private_default_on_and_patch_preserves_other_categories(self):
         result = self.client.get('/api/notification-settings/')
         self.assertEqual(result.status_code, 200)
-        self.assertEqual(result.data, dict.fromkeys(NOTIFICATION_KINDS, True))
+        self.assertEqual(result.data, dict.fromkeys((kind for kind in NOTIFICATION_KINDS if kind != 'task_assigned'), True))
         result = self.client.patch('/api/notification-settings/', {'expense': False}, format='json')
         self.assertEqual(result.status_code, 200)
         self.assertFalse(result.data['expense'])
@@ -42,6 +42,14 @@ class NotificationSettingsTests(APITestCase):
         self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.get('/api/notification-settings/').status_code, 403)
         self.assertEqual(self.client.patch('/api/notification-settings/', {'task_assigned': False}, format='json').status_code, 403)
+
+    def test_superuser_has_no_assignment_setting_or_assignment_delivery(self):
+        self.assertNotIn('task_assigned', self.client.get('/api/notification-settings/').data)
+        for enabled in (True, False):
+            self.assertEqual(self.client.patch('/api/notification-settings/', {'task_assigned': enabled}, format='json').status_code, 400)
+        task = Task.objects.create(creator=self.manager, assignee=self.owner, title='Недопустимое назначение')
+        queue_task_assigned(task)
+        self.assertFalse(TelegramNotification.objects.filter(kind='task_assigned').exists())
 
     def test_assignments_are_queued_once_for_administrator_and_manager(self):
         for recipient in (self.admin, self.manager):

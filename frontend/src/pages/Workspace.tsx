@@ -1006,7 +1006,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   <div className="cp-page-heading">
                     <h1>Уведомления</h1>
                   </div>
-                  {isManager && <NotificationSettings />}
+                  {isManager && (
+                    <NotificationSettings
+                      isSuperuser={user.role === "superuser"}
+                    />
+                  )}
                   {activities.map((item) => (
                     <div className="cp-notification" key={item.id}>
                       <div>

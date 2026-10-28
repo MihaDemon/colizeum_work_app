@@ -46,6 +46,31 @@ test("superuser personnel creates and edits manager activity", async ({
   expect(employees[0]).toMatchObject({ role: "manager", is_active: false });
 });
 
+test("superusers have no new task notification setting", async ({ page }) => {
+  await setup(page, { owner: true });
+  await page.route("**/api/notification-settings/", (route) =>
+    route.fulfill({
+      json: {
+        task: true,
+        shift_open: true,
+        shift_close: true,
+        expense: true,
+        cleaner: true,
+        schedule: true,
+      },
+    }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: "Уведомления", exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", { name: "Задачи на проверке", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "Новые задачи", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("management Telegram preferences persist while app events remain", async ({
   page,
 }, info) => {
