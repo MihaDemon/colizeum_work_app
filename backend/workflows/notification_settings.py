@@ -12,10 +12,12 @@ NOTIFICATION_KINDS = ('task_assigned', 'task', 'shift_open', 'shift_close', 'exp
 
 def preferences(user):
     stored = NotificationPreferences.objects.filter(user=user).values_list('telegram', flat=True).first() or {}
-    return {kind: stored.get(kind, True) for kind in NOTIFICATION_KINDS}
+    return {kind: stored.get(kind, True) for kind in NOTIFICATION_KINDS if not (user.is_superuser and kind == 'task_assigned')}
 
 
 def telegram_enabled(user, kind):
+    if user.is_superuser and kind == 'task_assigned':
+        return False
     # Administrators always receive assignments; management controls only their own delivery.
     return not (user.is_staff or user.is_superuser) or preferences(user).get(kind, True)
 
@@ -44,6 +46,8 @@ def notification_settings(request):
     if request.method == 'PATCH':
         serializer = PreferenceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        if request.user.is_superuser and 'task_assigned' in serializer.validated_data:
+            raise serializers.ValidationError({'task_assigned': 'Суперпользователю нельзя назначать задачи.'})
         with transaction.atomic():
             NotificationPreferences.objects.get_or_create(user=request.user)
             record = NotificationPreferences.objects.select_for_update().get(user=request.user)

@@ -15,7 +15,14 @@ const categories = [
 type Kind = (typeof categories)[number][0];
 type Preferences = Record<Kind, boolean>;
 
-export function NotificationSettings() {
+export function NotificationSettings({
+  isSuperuser,
+}: {
+  isSuperuser: boolean;
+}) {
+  const availableCategories = categories.filter(
+    ([kind]) => !isSuperuser || kind !== "task_assigned",
+  );
   const [saved, setSaved] = useState<Preferences | null>(null);
   const [draft, setDraft] = useState<Preferences | null>(null);
   const [error, setError] = useState("");
@@ -40,7 +47,9 @@ export function NotificationSettings() {
     return () => controller.abort();
   }, [revision]);
   const changed =
-    draft && saved && categories.some(([kind]) => draft[kind] !== saved[kind]);
+    draft &&
+    saved &&
+    availableCategories.some(([kind]) => draft[kind] !== saved[kind]);
   useDraft(Boolean(changed), busy, "notification-settings");
   return (
     <section
@@ -77,7 +86,7 @@ export function NotificationSettings() {
             setError("");
             setSuccess(false);
             const patch = Object.fromEntries(
-              categories
+              availableCategories
                 .filter(([kind]) => draft[kind] !== saved?.[kind])
                 .map(([kind]) => [kind, draft[kind]]),
             );
@@ -101,7 +110,7 @@ export function NotificationSettings() {
           }}
         >
           <div className="cp-telegram-options">
-            {categories.map(([kind, label]) => (
+            {availableCategories.map(([kind, label]) => (
               <label className="cp-telegram-option" key={kind}>
                 <span>{label}</span>
                 <input
