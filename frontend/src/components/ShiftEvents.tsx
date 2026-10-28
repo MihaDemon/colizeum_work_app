@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   IconArrowLeft,
   IconCalendarMonth,
-  IconChevronRight,
   IconRefresh,
 } from "@tabler/icons-react";
 import { request } from "../lib/api";
@@ -181,18 +180,15 @@ export function NotificationDetails({
 
 interface CleanerVisit {
   id: string;
-  shiftId: string;
   adminName: string;
   occurredAt: string;
 }
 export function CleanerHistory({
   initialMonth,
-  onOpenShift,
   onMonthChange,
   onBack,
 }: {
   initialMonth?: string;
-  onOpenShift: (id: string) => void;
   onMonthChange: (value: string) => void;
   onBack: () => void;
 }) {
@@ -260,13 +256,6 @@ export function CleanerHistory({
                 Уборщица пришла {cleanerDateTime(visit.occurredAt)}
               </strong>
               <p>Отметил(а): {visit.adminName}</p>
-              <button
-                className="cp-button cp-button-secondary"
-                onClick={() => onOpenShift(visit.shiftId)}
-              >
-                Открыть смену
-                <IconChevronRight size={18} />
-              </button>
             </div>
           ))}
         </div>

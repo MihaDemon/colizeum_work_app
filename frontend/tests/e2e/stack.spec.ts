@@ -311,13 +311,16 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
       manager.page.getByText("1\u00a0050 ₽", { exact: true }),
     ).toBeVisible();
     await expect(
-      manager.page.getByRole("button", { name: "История смен", exact: true }),
+      manager.page.getByRole("button", {
+        name: "История смен/задач",
+        exact: true,
+      }),
     ).toHaveCount(0);
     await manager.page
       .getByRole("button", { name: "Ещё", exact: true })
       .click();
     await manager.page
-      .getByRole("button", { name: "История смен", exact: true })
+      .getByRole("button", { name: "История смен/задач", exact: true })
       .click();
     await expect(manager.page.locator(".cp-history-total")).toContainText(
       "600 ₽",
@@ -373,16 +376,9 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
       `${process.env.STACK_BASE_URL}/?cleaner=${new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" }).slice(0, 7)}`,
     );
     await expect(owner.page.getByText(/Уборщица пришла/)).toBeVisible();
-    await owner.page
-      .getByRole("button", { name: "Открыть смену", exact: true })
-      .click();
     await expect(
-      owner.page.getByRole("heading", { name: "Детали смены" }),
-    ).toBeVisible();
-    await expect(owner.page.getByText("600 ₽", { exact: true })).toBeVisible();
-    await expect(
-      owner.page.getByRole("img", { name: "Чек закрытия смены", exact: true }),
-    ).toBeVisible();
+      owner.page.getByRole("button", { name: "Открыть смену", exact: true }),
+    ).toHaveCount(0);
     await owner.page.goto(`${process.env.STACK_BASE_URL}/?expense=1`);
     await expect(
       owner.page.getByRole("heading", { name: "Расход из кассы" }),

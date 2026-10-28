@@ -55,12 +55,12 @@ def task_data(task):
     }
 
 
-def shift_data(shift):
+def shift_data(shift, include_cleaner=True):
     report = shift.report
     cleaner = getattr(shift, 'cleaner_visit', None)
     return {
         'id': str(shift.pk), 'adminId': participant_id(shift, 'admin'), 'type': shift.shift_type,
-        'adminName': participant_name(shift, 'admin'), 'cleanerVisitedAt': iso(cleaner.occurred_at) if cleaner else None,
+        'adminName': participant_name(shift, 'admin'), 'cleanerVisitedAt': iso(cleaner.occurred_at) if cleaner and include_cleaner else None,
         'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
         'photoRequirements': shift.photo_requirements,
         **({'balance': float(CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0)} if not report else {}),
@@ -81,7 +81,7 @@ def workspace_data(user):
     if not user.is_staff and not user.is_superuser:
         history = history.filter(admin=user)
         expenses = expenses.filter(admin=user)
-        activity = activity.filter(Q(actor=user) | Q(task__assignee=user))
+        activity = activity.filter(Q(actor=user) | Q(task__assignee=user)).exclude(kind='cleaner')
     elif not user.is_superuser:
         activity = activity.filter(Q(actor=user) | Q(task__creator=user) | Q(task__assignee=user) | Q(task__isnull=True))
     people_ids = {user.pk}
@@ -118,7 +118,7 @@ def workspace_data(user):
         'state': {
             'photoSettings': {'reportFields': photo_settings.report_fields, 'version': photo_settings.version},
             'shift': shift_data(current) if current else None,
-            'shifts': sorted([shift_data(s) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],
+            'shifts': sorted([shift_data(s, include_cleaner=user.is_staff or user.is_superuser) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],
             'expenses': [{
                 'id': str(e.pk), 'adminId': participant_id(e, 'admin'),
                 'shiftId': str(e.work_shift_expense.shift_id) if hasattr(e, 'work_shift_expense') else None,

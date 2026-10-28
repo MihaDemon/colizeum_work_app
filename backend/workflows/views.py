@@ -72,7 +72,9 @@ class ShiftViewSet(viewsets.GenericViewSet):
         return shifts
 
     def retrieve(self, request, pk=None):
-        return Response(shift_data(self.get_object()))
+        shift = self.get_object()
+        include_cleaner = request.user.is_staff or request.user.is_superuser or shift.closed_at is None
+        return Response(shift_data(shift, include_cleaner=include_cleaner))
 
     @action(detail=True, methods=['post'])
     @idempotent_command
@@ -156,6 +158,8 @@ def expense_details(request, pk):
 
 @api_view(['GET'])
 def cleaner_history(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        raise PermissionDenied('История уборщицы доступна только управляющим и суперпользователям.')
     from django.utils import timezone
     now = timezone.now().astimezone(MOSCOW)
     class Period(serializers.Serializer):
@@ -167,8 +171,6 @@ def cleaner_history(request):
     visits = CleanerVisit.objects.select_related('admin__phone_number').annotate(
         year=ExtractYear('occurred_at', tzinfo=MOSCOW), month=ExtractMonth('occurred_at', tzinfo=MOSCOW),
     ).filter(**period)
-    if not (request.user.is_staff or request.user.is_superuser):
-        visits = visits.filter(admin=request.user)
     return Response({**period, 'results': [cleaner_data(visit) for visit in visits]})
 
 

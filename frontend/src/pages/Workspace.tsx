@@ -679,7 +679,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       },
                       {
                         id: "history" as const,
-                        label: "История смен",
+                        label: "История смен/задач",
                         icon: IconHistory,
                       },
                       {
@@ -692,13 +692,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         label: "Уведомления",
                         icon: IconBell,
                       },
-                      {
-                        id: "cleaner" as const,
-                        label: "Уборщица",
-                        icon: IconBrush,
-                      },
                       ...(isManager
                         ? [
+                            {
+                              id: "cleaner" as const,
+                              label: "Уборщица",
+                              icon: IconBrush,
+                            },
                             {
                               id: "photo-settings" as const,
                               label: "Фотографии отчёта",
@@ -735,13 +735,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   onSave={(action, message) => save(action, message)}
                 />
               )}
-              {view === "cleaner" && (
+              {view === "cleaner" && isManager && (
                 <CleanerHistory
                   initialMonth={cleanerMonth}
                   onMonthChange={setCleanerMonth}
                   onBack={back}
-                  onOpenShift={(id) => setLinkedRecord({ kind: "shift", id })}
                 />
+              )}
+              {view === "cleaner" && !isManager && (
+                <p role="alert">
+                  История уборщицы доступна только управляющим и
+                  суперпользователям.
+                </p>
               )}
               {view === "schedule" && (
                 <SchedulePage
@@ -821,7 +826,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     Назад в «Ещё»
                   </button>
                   <div className="cp-page-heading">
-                    <h1>История смен</h1>
+                    <h1>История смен/задач</h1>
                   </div>
                   <div className="cp-tabs cp-history-tabs">
                     <button
