@@ -16,7 +16,7 @@ class AdminUserForm(forms.ModelForm):
 
     class Meta:
         model = AdminUser
-        fields = ('first_name', 'last_name', 'phone_number', 'role')
+        fields = ('first_name', 'last_name', 'phone_number', 'role', 'is_active')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

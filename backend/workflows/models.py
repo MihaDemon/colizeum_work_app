@@ -137,14 +137,15 @@ class CleanerVisit(UserHistory):
 
 
 class TelegramNotification(UserHistory):
+    task = models.ForeignKey(Task, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Назначенная задача')
     schedule = models.ForeignKey('SchedulePeriod', on_delete=models.PROTECT, null=True, blank=True, verbose_name='График')
-    kind = models.CharField(max_length=12, default='task', choices=[('task', 'Задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица'), ('schedule', 'Итоговый график')], verbose_name='Событие')
+    kind = models.CharField(max_length=16, default='task', choices=[('task', 'Задача на проверке'), ('task_assigned', 'Новая задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица'), ('schedule', 'Итоговый график')], verbose_name='Событие')
     message = models.TextField(blank=True, verbose_name='Текст уведомления')
     submission = models.OneToOneField(TaskSubmission, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Выполнение задачи')
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Смена')
     expense = models.ForeignKey('reports.Expenses', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Расход')
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Получатель')
-    status = models.CharField(max_length=10, default='pending', choices=[('pending', 'Ожидает отправки'), ('sending', 'Отправляется'), ('sent', 'Отправлено'), ('failed', 'Ошибка отправки')], verbose_name='Статус')
+    status = models.CharField(max_length=10, default='pending', choices=[('pending', 'Ожидает отправки'), ('sending', 'Отправляется'), ('sent', 'Отправлено'), ('failed', 'Ошибка отправки'), ('skipped', 'Отключено получателем')], verbose_name='Статус')
     attempts = models.PositiveIntegerField(default=0, verbose_name='Попытки отправки')
     next_attempt_at = models.DateTimeField(verbose_name='Следующая попытка')
     claim_token = models.UUIDField(default=uuid.uuid4, verbose_name='Идентификатор обработки')
@@ -158,15 +159,26 @@ class TelegramNotification(UserHistory):
         indexes = [models.Index(fields=['status', 'next_attempt_at'])]
         constraints = [
             models.CheckConstraint(condition=(
-                Q(kind='task', submission__isnull=False, shift__isnull=True, expense__isnull=True, schedule__isnull=True)
-                | Q(kind__in=['shift_open', 'shift_close', 'cleaner'], submission__isnull=True, shift__isnull=False, expense__isnull=True, schedule__isnull=True)
-                | Q(kind='expense', submission__isnull=True, shift__isnull=True, expense__isnull=False, schedule__isnull=True)
-                | Q(kind='schedule', submission__isnull=True, shift__isnull=True, expense__isnull=True, schedule__isnull=False)
+                Q(kind='task', task__isnull=True, submission__isnull=False, shift__isnull=True, expense__isnull=True, schedule__isnull=True)
+                | Q(kind='task_assigned', task__isnull=False, submission__isnull=True, shift__isnull=True, expense__isnull=True, schedule__isnull=True)
+                | Q(kind__in=['shift_open', 'shift_close', 'cleaner'], task__isnull=True, submission__isnull=True, shift__isnull=False, expense__isnull=True, schedule__isnull=True)
+                | Q(kind='expense', task__isnull=True, submission__isnull=True, shift__isnull=True, expense__isnull=False, schedule__isnull=True)
+                | Q(kind='schedule', task__isnull=True, submission__isnull=True, shift__isnull=True, expense__isnull=True, schedule__isnull=False)
             ), name='notification_has_matching_target'),
             models.UniqueConstraint(fields=['kind', 'shift', 'recipient'], condition=Q(shift__isnull=False), name='unique_shift_event_recipient'),
             models.UniqueConstraint(fields=['schedule', 'recipient'], condition=Q(kind='schedule'), name='unique_schedule_recipient'),
             models.UniqueConstraint(fields=['expense', 'recipient'], condition=Q(kind='expense'), name='unique_expense_recipient'),
+            models.UniqueConstraint(fields=['task', 'recipient'], condition=Q(kind='task_assigned'), name='unique_assignment_recipient'),
         ]
+
+
+class NotificationPreferences(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notification_preferences', verbose_name='Пользователь')
+    telegram = models.JSONField(default=dict, blank=True, verbose_name='Уведомления в Telegram')
+
+    class Meta:
+        verbose_name = 'Настройки уведомлений'
+        verbose_name_plural = 'Настройки уведомлений'
 
 
 class CommandReceipt(models.Model):

@@ -227,6 +227,8 @@ def bind_contact(request):
         if len(matches) > 1:
             raise ValidationError({'phone_number': 'Номер повторяется в списке сотрудников. Обратитесь к суперпользователю.'})
         contact = get_object_or_404(AdminUser.objects.select_for_update(), pk__in=matches)
+        if not contact.is_active:
+            raise PermissionDenied('Учётная запись отключена.')
         if contact.telegram_id and contact.telegram_id != data['telegram_id']:
             raise PermissionDenied('Этот телефон уже связан с другим аккаунтом Telegram.')
         other = AdminUser.objects.filter(telegram_id=data['telegram_id']).exclude(pk=contact.pk).exists()

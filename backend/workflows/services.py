@@ -7,7 +7,7 @@ from rest_framework.exceptions import APIException, PermissionDenied
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
 from .models import Activity, CleanerVisit, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 from .permissions import person, role
-from .notifications import MOSCOW, queue_management
+from .notifications import MOSCOW, queue_management, queue_task_assigned
 from .photos import uploaded_photos, validate_photos
 
 
@@ -128,6 +128,7 @@ def create_task(user, data):
             raise PermissionDenied('Управляющий может назначать задачи администратору текущей смены.')
     task = Task.objects.create(creator=user, shift=shift if shift and shift.admin_id == assignee.pk else None, **data)
     event(user, 'Задача назначена', task.title, kind='task', task=task)
+    queue_task_assigned(task)
     return task
 
 

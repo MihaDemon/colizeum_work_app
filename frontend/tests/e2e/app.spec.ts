@@ -6,6 +6,166 @@ const namedFields = [
   { id: "after", label: "After cleaning", required: true },
 ];
 
+test("superuser personnel creates and edits manager activity", async ({
+  page,
+}, info) => {
+  await setup(page, { owner: true });
+  const employees: Record<string, unknown>[] = [];
+  await page.route("**/api/personnel/**", async (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { results: employees } });
+    const body = route.request().postDataJSON();
+    if (route.request().method() === "POST") {
+      const employee = { ...body, id: body.phone_number, registered: false };
+      employees.push(employee);
+      return route.fulfill({ status: 201, json: employee });
+    }
+    Object.assign(employees[0], body);
+    return route.fulfill({ json: employees[0] });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: "Персонал", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить сотрудника" }).click();
+  await page.getByLabel("Имя", { exact: true }).fill("Мария");
+  await page.getByLabel("Фамилия", { exact: true }).fill("Иванова");
+  await page.getByLabel("Телефон", { exact: true }).fill("9991234567");
+  await page.getByLabel("Роль", { exact: true }).selectOption("manager");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await page.getByRole("button", { name: /Мария Иванова/ }).click();
+  await page.getByLabel("Фамилия", { exact: true }).fill("Петрова");
+  await page.getByRole("checkbox", { name: /Активен/ }).uncheck();
+  await page.screenshot({
+    path: info.outputPath("personnel-edit.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /Мария Петрова/ }),
+  ).toContainText("Отключён");
+  expect(employees[0]).toMatchObject({ role: "manager", is_active: false });
+});
+
+test("management Telegram preferences persist while app events remain", async ({
+  page,
+}, info) => {
+  await setup(page, { staff: true, events: true });
+  let preferences = {
+    task_assigned: true,
+    task: true,
+    shift_open: true,
+    shift_close: true,
+    expense: true,
+    cleaner: true,
+    schedule: true,
+  };
+  await page.route("**/api/notification-settings/", async (route) => {
+    if (route.request().method() === "PATCH")
+      preferences = { ...preferences, ...route.request().postDataJSON() };
+    return route.fulfill({ json: preferences });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: "Уведомления", exact: true }).click();
+  await page
+    .getByRole("checkbox", { name: "Открытие смены", exact: true })
+    .uncheck();
+  await page
+    .getByRole("checkbox", { name: "Новые задачи", exact: true })
+    .uncheck();
+  await page.getByRole("button", { name: "Сохранить настройки" }).click();
+  await expect(
+    page.getByText("Настройки сохранены.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Смена открыта", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("notification-preferences.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Ещё", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Уведомления", exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", { name: "Открытие смены", exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: "Закрытие смены", exact: true }),
+  ).toBeChecked();
+});
+
+test("superuser edits cash by tapping balance with stale amount safeguard", async ({
+  page,
+}, info) => {
+  await setup(page, { owner: true, noShift: true });
+  let attempts = 0;
+  await page.route("**/api/cash-adjustment/", async (route) => {
+    attempts += 1;
+    if (attempts === 1)
+      return route.fulfill({
+        status: 409,
+        json: {
+          detail:
+            "Остаток кассы изменился. Обновите данные и повторите исправление.",
+        },
+      });
+    await route.fallback();
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Изменить остаток кассы/ }).click();
+  await page.getByLabel("Новый остаток кассы, ₽").fill("1250,50");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page
+    .getByRole("button", { name: "Создать задачу", exact: true })
+    .click();
+  await expect(page.getByLabel("Новый остаток кассы, ₽")).toHaveValue(
+    "1250,50",
+  );
+  await page.screenshot({
+    path: info.outputPath("cash-editor.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Остаток кассы изменился",
+  );
+  await expect(page.getByLabel("Новый остаток кассы, ₽")).toHaveValue(
+    "1250,50",
+  );
+  await page.getByRole("button", { name: "Обновить данные" }).click();
+  await page.getByRole("button", { name: /Изменить остаток кассы/ }).click();
+  await page.getByLabel("Новый остаток кассы, ₽").fill("1250,50");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /Изменить остаток кассы/ }),
+  ).toContainText("1 250,50 ₽");
+});
+
+for (const staff of [false, true]) {
+  test(`personnel and cash editing are exclusive to superusers, staff=${staff}`, async ({
+    page,
+  }) => {
+    await setup(page, { staff });
+    await page.goto("/");
+    await expect(
+      page.getByRole("button", { name: /Изменить остаток кассы/ }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Ещё", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Персонал", exact: true }),
+    ).toHaveCount(0);
+    if (!staff) {
+      await page
+        .getByRole("button", { name: "Уведомления", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Сообщения в Telegram" }),
+      ).toHaveCount(0);
+    }
+  });
+}
+
 test("Russian monetary inputs accept decimal commas and send numeric API values", async ({
   page,
 }) => {
@@ -463,6 +623,7 @@ async function setup(
     reportFields?: { id: string; label: string; required: boolean }[];
     photoMode?: "single" | "multiple" | "named";
     taskPhotoFields?: { id: string; label: string; required: boolean }[];
+    events?: boolean;
   } = {},
 ) {
   await page.route("https://telegram.org/**", (route) =>
@@ -590,6 +751,12 @@ async function setup(
         },
       });
     expect(route.request().headers().authorization).toBe("Token valid-token");
+    if (path === "/api/cash-adjustment/") {
+      const data = route.request().postDataJSON();
+      expect(data.expected_balance).toBe(balance.toFixed(2));
+      balance = Number(data.balance);
+      return route.fulfill({ json: { balance: balance.toFixed(2) } });
+    }
     if (path.startsWith("/api/files/"))
       return route.fulfill({ contentType: "image/png", body: photo });
     if (path.endsWith("/photo-settings/")) {
@@ -669,7 +836,18 @@ async function setup(
                   : null,
                 balance,
                 expenses: [],
-                activity: [],
+                activity: options.events
+                  ? [
+                      {
+                        id: "event-1",
+                        title: "Смена открыта",
+                        description: "Дневная смена",
+                        time: "2026-10-28T10:00:00+03:00",
+                        kind: "shift",
+                        actorId: "3",
+                      },
+                    ]
+                  : [],
                 shifts: [],
                 tasks: [
                   {

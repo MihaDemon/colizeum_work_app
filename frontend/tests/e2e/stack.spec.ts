@@ -11,10 +11,7 @@ const image = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8//8/AwMDEwMDAwMDAwAkBgMB/DXemwAAAABJRU5ErkJggg==",
   "base64",
 );
-async function session(browser: Browser, id: number) {
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-  });
+function telegramData(id: number) {
   const fields: Record<string, string> = {
     auth_date: String(Math.floor(Date.now() / 1000)),
     user: JSON.stringify({ id }),
@@ -30,6 +27,12 @@ async function session(browser: Browser, id: number) {
         .join("\n"),
     )
     .digest("hex");
+  return new URLSearchParams(fields).toString();
+}
+async function session(browser: Browser, id: number) {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
   await context.route("https://telegram.org/**", (r) =>
     r.fulfill({ contentType: "text/javascript", body: "" }),
   );
@@ -66,11 +69,15 @@ async function session(browser: Browser, id: number) {
     };
     Object.defineProperty(window, "Telegram", { value: { WebApp: app } });
     Object.defineProperty(window, "stackBack", { value: () => back() });
-  }, new URLSearchParams(fields).toString());
+  }, telegramData(id));
   const page = await context.newPage();
+  const login = page.waitForResponse((response) =>
+    response.url().endsWith("/api/telegram/telegram/"),
+  );
   await page.goto(process.env.STACK_BASE_URL!);
   await expect(page.locator(".cp-bottom-nav")).toBeVisible();
-  return { page, context };
+  const token = (await (await login).json()).token as string;
+  return { page, context, headers: { Authorization: `Token ${token}` } };
 }
 async function task(page: Page, title: string) {
   await page.getByRole("button", { name: new RegExp(title) }).click();
@@ -172,6 +179,23 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     await expect(manager.page.getByRole("status")).toContainText(
       "Требования к фотографиям отчёта сохранены",
     );
+    await manager.page
+      .getByRole("button", { name: "Ещё", exact: true })
+      .click();
+    await manager.page
+      .getByRole("button", { name: "Уведомления", exact: true })
+      .click();
+    await manager.page.getByLabel("Открытие смены", { exact: true }).uncheck();
+    await manager.page
+      .getByRole("button", { name: "Сохранить настройки", exact: true })
+      .click();
+    await expect(manager.page.getByText("Настройки сохранены.", { exact: true })).toBeVisible();
+    const preferences = await manager.context.request.get(
+      `${process.env.STACK_BASE_URL}/api/notification-settings/`,
+      { headers: manager.headers },
+    );
+    expect(preferences.ok()).toBeTruthy();
+    expect((await preferences.json()).shift_open).toBe(false);
     await admin.page.reload();
     await admin.page
       .getByRole("button", { name: "Открыть смену", exact: true })
@@ -398,6 +422,175 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     await expect(owner.page.getByLabel("Детали ячейки графика")).toContainText(
       "Фактически: Stack Administrator",
     );
+
+    // Telegram opt-out never removes the event from the application's feed.
+    await manager.page.goto(process.env.STACK_BASE_URL!);
+    await manager.page
+      .getByRole("button", { name: "Ещё", exact: true })
+      .click();
+    await manager.page
+      .getByRole("button", { name: "Уведомления", exact: true })
+      .click();
+    await expect(
+      manager.page.getByLabel("Открытие смены", { exact: true }),
+    ).not.toBeChecked();
+    await expect(
+      manager.page
+        .locator(".cp-notification")
+        .filter({ hasText: "Смена открыта" }),
+    ).toBeVisible();
+
+    // Correct the real singleton register from the amount shown in the Mini App.
+    await owner.page.goto(process.env.STACK_BASE_URL!);
+    await owner.page
+      .getByRole("button", { name: /Изменить остаток кассы:/ })
+      .click();
+    await owner.page.getByLabel("Новый остаток кассы, ₽").fill("1500,75");
+    await owner.page
+      .getByRole("button", { name: "Сохранить", exact: true })
+      .click();
+    await expect(
+      owner.page.getByRole("button", {
+        name: /Изменить остаток кассы:.*1\s500,75/,
+      }),
+    ).toBeVisible();
+    const cash = await owner.context.request.get(
+      `${process.env.STACK_BASE_URL}/api/cash-register/`,
+      { headers: owner.headers },
+    );
+    expect(cash.ok()).toBeTruthy();
+    expect((await cash.json()).balance).toBe("1500.75");
+
+    // Create an allowlisted administrator, register normally, then edit/disable
+    // and re-enable that account without disturbing this suite's active users.
+    await owner.page.getByRole("button", { name: "Ещё", exact: true }).click();
+    await owner.page
+      .getByRole("button", { name: "Персонал", exact: true })
+      .click();
+    await owner.page
+      .getByRole("button", { name: "Добавить сотрудника" })
+      .click();
+    await owner.page.getByLabel("Имя", { exact: true }).fill("Stack");
+    await owner.page.getByLabel("Фамилия", { exact: true }).fill("Extra");
+    await owner.page
+      .getByLabel("Телефон", { exact: true })
+      .fill("+7 999 000-00-04");
+    await owner.page.getByLabel("Роль", { exact: true }).selectOption("admin");
+    await owner.page
+      .getByRole("button", { name: "Сохранить", exact: true })
+      .click();
+    const employee = owner.page
+      .locator(".cp-personnel-row")
+      .filter({ hasText: "Stack Extra" });
+    await expect(employee).toContainText("Ожидает регистрации");
+    const bound = await owner.context.request.post(
+      `${process.env.STACK_BOT_BASE_URL}/api/bot/contact/`,
+      {
+        headers: { "X-Bot-Service-Token": "integration-test-only-bot-service" },
+        data: { telegram_id: "91004", phone_number: "9990000004" },
+      },
+    );
+    expect(bound.ok()).toBeTruthy();
+    const registration = await owner.context.request.post(
+      `${process.env.STACK_BASE_URL}/api/telegram/telegram/`,
+      {
+        data: {
+          initData: telegramData(91004),
+          username: "stack_extra",
+          phone_number: "9990000004",
+        },
+      },
+    );
+    expect(registration.status()).toBe(201);
+    const extraToken = (await registration.json()).token as string;
+    await owner.page.reload();
+    await owner.page.getByRole("button", { name: "Ещё", exact: true }).click();
+    await owner.page
+      .getByRole("button", { name: "Персонал", exact: true })
+      .click();
+    await employee.click();
+    await owner.page
+      .getByLabel("Фамилия", { exact: true })
+      .fill("Extra edited");
+    await owner.page
+      .getByLabel("Роль", { exact: true })
+      .selectOption("manager");
+    await owner.page.getByRole("checkbox", { name: /^Активен/ }).uncheck();
+    await owner.page
+      .getByRole("button", { name: "Сохранить", exact: true })
+      .click();
+    const editedEmployee = owner.page
+      .locator(".cp-personnel-row")
+      .filter({ hasText: "Stack Extra edited" });
+    await expect(editedEmployee).toContainText("Управляющий · Отключён");
+    const disabledSession = await owner.context.request.get(
+      `${process.env.STACK_BASE_URL}/api/workspace/`,
+      { headers: { Authorization: `Token ${extraToken}` } },
+    );
+    expect(disabledSession.status()).toBe(401);
+    const disabledLogin = await owner.context.request.post(
+      `${process.env.STACK_BASE_URL}/api/telegram/telegram/`,
+      { data: { initData: telegramData(91004) } },
+    );
+    expect(disabledLogin.status()).toBe(403);
+    await editedEmployee.click();
+    await owner.page.getByRole("checkbox", { name: /^Активен/ }).check();
+    await owner.page
+      .getByRole("button", { name: "Сохранить", exact: true })
+      .click();
+    await expect(editedEmployee).toContainText("Управляющий · Активен");
+    const enabledLogin = await owner.context.request.post(
+      `${process.env.STACK_BASE_URL}/api/telegram/telegram/`,
+      { data: { initData: telegramData(91004) } },
+    );
+    expect(enabledLogin.status()).toBe(200);
+    const enabledToken = (await enabledLogin.json()).token as string;
+    const updatedAccount = await owner.context.request.get(
+      `${process.env.STACK_BASE_URL}/api/telegram/me/`,
+      { headers: { Authorization: `Token ${enabledToken}` } },
+    );
+    expect(await updatedAccount.json()).toMatchObject({
+      first_name: "Stack",
+      last_name: "Extra edited",
+      is_staff: true,
+      is_active: true,
+    });
+
+    // Inspect persisted jobs through Django Admin; the isolated stack has no
+    // Telegram worker and these assertions never contact the Telegram API.
+    const jobs = await owner.context.newPage();
+    try {
+      await jobs.goto(`${process.env.STACK_BASE_URL}/admin/login/`);
+      await jobs.locator("#id_username").fill("stack_owner");
+      await jobs.locator("#id_password").fill("isolated-stack-test-password");
+      await jobs.locator('input[type="submit"]').click();
+      await jobs.goto(
+        `${process.env.STACK_BASE_URL}/admin/workflows/telegramnotification/?kind__exact=task_assigned`,
+      );
+      await expect(jobs.locator("#result_list tbody tr")).toHaveCount(2);
+      await expect(jobs.locator("#result_list .field-recipient")).toContainText(
+        ["stack_manager", "stack_admin"],
+      );
+      await expect(jobs.locator("#result_list .field-status")).toContainText([
+        "Ожидает отправки",
+        "Ожидает отправки",
+      ]);
+      await jobs.goto(
+        `${process.env.STACK_BASE_URL}/admin/workflows/telegramnotification/?kind__exact=shift_open`,
+      );
+      await expect(
+        jobs
+          .locator("#result_list tbody tr")
+          .filter({ hasText: "stack_manager" }),
+      ).toContainText("Отключено получателем");
+      await expect(
+        jobs
+          .locator("#result_list tbody tr")
+          .filter({ hasText: "stack_owner" }),
+      ).toContainText("Ожидает отправки");
+    } finally {
+      await jobs.close();
+    }
   } finally {
     await admin.context.close();
     await manager.context.close();

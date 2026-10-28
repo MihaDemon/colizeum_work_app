@@ -26,6 +26,12 @@ export function errorMessage(data: unknown): string {
       .map(([key, value]) => {
         const labels: Record<string, string> = {
           username: "Логин",
+          first_name: "Имя",
+          last_name: "Фамилия",
+          role: "Роль",
+          is_active: "Активность",
+          balance: "Остаток кассы",
+          expected_balance: "Исходный остаток кассы",
           phone_number: "Телефон",
           uploaded_photos: "Фотографии",
           amount: "Сумма",

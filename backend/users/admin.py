@@ -66,6 +66,13 @@ class UserAdmin(BaseUserAdmin):
     )
     readonly_fields = ('date_joined', 'last_login')
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if obj.phone_number_id:
+            # Keep both entry points consistent when activity is changed in
+            # Django admin instead of the Mini App's personnel screen.
+            AdminUser.objects.filter(pk=obj.phone_number_id).update(is_active=obj.is_active)
+
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
 
@@ -90,7 +97,7 @@ class AdminUserAdmin(admin.ModelAdmin):
     form = AdminUserForm
     list_display = (
         'phone_number',
-        'first_name', 'last_name', 'role',
+        'first_name', 'last_name', 'role', 'is_active',
     )
     search_fields = ('phone_number', 'first_name', 'last_name')
     list_filter = ('role',)
@@ -102,7 +109,7 @@ class AdminUserAdmin(admin.ModelAdmin):
         delete_staff_cards(queryset)
 
     def get_fields(self, request, obj=None):
-        fields = ('first_name', 'last_name', 'phone_number', 'role')
+        fields = ('first_name', 'last_name', 'phone_number', 'role', 'is_active')
         return fields + ('telegram_id',) if obj else fields
 
     def get_readonly_fields(self, request, obj=None):
@@ -124,6 +131,8 @@ class AdminUserAdmin(admin.ModelAdmin):
         linked.update(first_name=obj.first_name, last_name=obj.last_name)
         if change and 'role' in form.changed_data:
             linked.filter(is_superuser=False).update(is_staff=obj.role == 'manager')
+        if change and 'is_active' in form.changed_data:
+            linked.filter(is_superuser=False).update(is_active=obj.is_active)
 
 admin.site.site_header = 'COLIZEUM — управление'
 admin.site.site_title = 'COLIZEUM'

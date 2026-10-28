@@ -61,6 +61,8 @@ class AuthViewSet(viewsets.ViewSet):
     def contact_status(self, request):
         ident = self.telegram_id(request)
         contact = AdminUser.objects.filter(telegram_id=ident).first()
+        if contact and (not contact.is_active or User.objects.filter(phone_number=contact, is_active=False).exists()):
+            raise PermissionDenied('Учётная запись отключена.')
         try:
             phone = normalize_staff_phone(contact.pk) if contact else None
         except DjangoValidationError:
@@ -74,7 +76,7 @@ class AuthViewSet(viewsets.ViewSet):
         telegram_id = self.telegram_id(request)
         user = User.objects.filter(telegram_id=telegram_id).first()
         if user:
-            if not user.is_active:
+            if not user.is_active or (user.phone_number_id and not user.phone_number.is_active):
                 raise PermissionDenied('Учётная запись отключена.')
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
@@ -97,6 +99,8 @@ class AuthViewSet(viewsets.ViewSet):
                 contact = AdminUser.objects.select_for_update().filter(telegram_id=telegram_id).first()
                 if not contact or normalize_staff_phone(contact.pk) != registration.validated_data['phone_number']:
                     raise PermissionDenied('Подтвердите свой номер через Telegram в приложении. Суперпользователь должен добавить вас в список сотрудников.')
+                if not contact.is_active:
+                    raise PermissionDenied('Учётная запись отключена.')
                 if User.objects.filter(phone_number=contact).exists():
                     raise ValidationError({'phone_number': 'Этот телефон уже зарегистрирован.'})
                 user = User.objects.create_user(username=registration.validated_data['username'], phone_number=contact,

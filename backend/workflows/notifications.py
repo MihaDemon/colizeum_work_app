@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from .models import TelegramNotification
+from .notification_settings import telegram_enabled
 
 MOSCOW = ZoneInfo('Europe/Moscow')
 
@@ -27,9 +28,25 @@ def queue_management(kind, message, *, shift=None, expense=None, schedule=None):
     recipients = get_user_model().objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True)).exclude(telegram_id__isnull=True).exclude(telegram_id='')
     TelegramNotification.objects.bulk_create([
         TelegramNotification(kind=kind, message=message, shift=shift, expense=expense, schedule=schedule,
-                             recipient=recipient, next_attempt_at=timezone.now())
+                             recipient=recipient, next_attempt_at=timezone.now(),
+                             status='pending' if telegram_enabled(recipient, kind) else 'skipped')
         for recipient in recipients
     ])
+
+
+def queue_task_assigned(task):
+    recipient = task.assignee
+    if not recipient or not recipient.is_active or recipient.is_superuser or not recipient.telegram_id:
+        return
+    from .permissions import person
+    message = f'Вам назначена новая задача: {task.title}\nПостановщик: {person(task.creator)["name"]}'
+    if task.description:
+        message += f'\n{task.description[:2000]}'
+    TelegramNotification.objects.get_or_create(
+        kind='task_assigned', task=task, recipient=recipient,
+        defaults={'message': message, 'next_attempt_at': timezone.now(),
+                  'status': 'pending' if telegram_enabled(recipient, 'task_assigned') else 'skipped'},
+    )
 
 
 def telegram_send(recipient, task):
@@ -39,7 +56,9 @@ def telegram_send(recipient, task):
         raise DeliveryError('Не указан токен бота или Telegram ID получателя.')
     if isinstance(task, TelegramNotification):
         text = task.message
-        if task.kind == 'schedule':
+        if task.kind == 'task_assigned':
+            label, target = 'Открыть задачу', {'task': task.task_id}
+        elif task.kind == 'schedule':
             label, target = 'Открыть график', {'schedule': task.schedule_id}
         elif task.kind == 'expense':
             label, target = 'Открыть расход', {'expense': task.expense_id}
@@ -98,13 +117,22 @@ def deliver_one(send=telegram_send):
         job.attempts += 1
         job.next_attempt_at = now + timedelta(minutes=2)
         job.save(update_fields=['status', 'claim_token', 'attempts', 'next_attempt_at'])
-    job = TelegramNotification.objects.select_related('recipient', 'submission__task', 'shift__cleaner_visit', 'schedule').filter(pk=job.pk).first()
+    job = TelegramNotification.objects.select_related('recipient', 'submission__task', 'task', 'shift__cleaner_visit', 'schedule').filter(pk=job.pk).first()
     if job is None or job.status != 'sending' or job.claim_token != claim:
         return True
     if job.recipient_id is None:
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель удалён.')
         return True
-    if job.kind != 'task' and not (job.recipient.is_staff or job.recipient.is_superuser):
+    if not job.recipient.is_active or not job.recipient.telegram_id:
+        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Учётная запись отключена или Telegram не связан.')
+        return True
+    if not telegram_enabled(job.recipient, job.kind):
+        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='skipped', last_error='Уведомление отключено получателем.')
+        return True
+    if job.kind == 'task_assigned' and (job.task.assignee_id != job.recipient_id or job.recipient.is_superuser):
+        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель больше не исполнитель задачи.')
+        return True
+    if job.kind != 'task_assigned' and not (job.recipient.is_staff or job.recipient.is_superuser):
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель больше не управляющий или суперпользователь.')
         return True
     try:

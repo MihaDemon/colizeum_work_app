@@ -1,0 +1,35 @@
+.cp-telegram-settings {
+  margin-block: 24px 32px;
+  max-width: 640px;
+}
+.cp-telegram-settings h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.cp-telegram-options {
+  margin-block: 16px;
+}
+.cp-telegram-option {
+  min-height: 48px;
+  display: flex;
+  flex-direction: row;
+  font: inherit;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--cp-line);
+  cursor: pointer;
+}
+.cp-app .cp-telegram-option input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex: 0 0 22px;
+  padding: 0;
+  accent-color: var(--cp-accent);
+  cursor: pointer;
+}
+.cp-telegram-option:has(:disabled) {
+  opacity: 0.6;
+  cursor: wait;
+}
