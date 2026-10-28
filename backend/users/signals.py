@@ -7,7 +7,7 @@ from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 
 from reports.models import CashRegister, Expenses, Report
-from workflows.models import Activity, CleanerVisit, Shift, Task, TaskSubmission, TelegramNotification
+from workflows.models import Activity, CleanerVisit, ScheduleRevision, Shift, Task, TaskSubmission, TelegramNotification
 from workflows.permissions import person
 
 
@@ -23,7 +23,7 @@ def preserve_employee_history(sender, instance, using, **kwargs):
         (Shift, ('admin',)), (Task, ('creator', 'assignee')),
         (TaskSubmission, ('submitted_by', 'reviewed_by')),
         (Activity, ('actor',)), (TelegramNotification, ('recipient',)),
-        (Report, ('admin',)), (Expenses, ('admin',)), (CleanerVisit, ('admin',)),
+        (Report, ('admin',)), (Expenses, ('admin',)), (CleanerVisit, ('admin',)), (ScheduleRevision, ('author',)),
     ):
         query = reduce(or_, (Q(**{field: instance.pk}) for field in fields))
         records = model.objects.using(using).select_for_update().filter(query).order_by('pk')

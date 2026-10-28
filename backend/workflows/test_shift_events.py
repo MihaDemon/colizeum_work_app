@@ -160,11 +160,12 @@ class ShiftEventTests(APITestCase):
             report = Report.objects.create(admin=admin, date=timezone.localdate(), cash=0)
             shift = Shift.objects.create(admin=admin, shift_type='day', report=report, closed_at=timezone.now())
             CleanerVisit.objects.create(admin=admin, shift=shift, occurred_at=datetime.fromisoformat(stamp))
-        self.assertEqual(len(self.client.get('/api/cleaner-visits/?year=2026&month=10').data['results']), 1)
-        self.assertEqual(len(self.client.get('/api/cleaner-visits/?year=2026&month=11').data['results']), 1)
+        self.assertEqual(self.client.get('/api/cleaner-visits/?year=2026&month=10').status_code, 403)
+        self.assertEqual(self.client.get('/api/cleaner-visits/?year=2026&month=11').status_code, 403)
         for user in (self.manager, self.owner):
             self.client.force_authenticate(user)
             self.assertEqual(len(self.client.get('/api/cleaner-visits/?year=2026&month=10').data['results']), 2)
+            self.assertEqual(len(self.client.get('/api/cleaner-visits/?year=2026&month=11').data['results']), 1)
         for params in ('year=no&month=10', 'year=2026&month=13'):
             self.assertEqual(self.client.get('/api/cleaner-visits/?' + params).status_code, 400)
         self.admin.delete()
@@ -191,6 +192,19 @@ class ShiftEventTests(APITestCase):
             self.assertTrue(deliver_one(send))
             send.assert_not_called()
         self.assertEqual(TelegramNotification.objects.get().status, 'failed')
+
+    def test_admin_cannot_read_past_cleaner_details_but_can_mark_active_shift(self):
+        pk = self.open()
+        self.assertEqual(self.client.post(f'/api/shifts/{pk}/cleaner/', {'confirmed': True}).status_code, 201)
+        self.assertIsNotNone(self.client.get('/api/workspace/').data['state']['shift']['cleanerVisitedAt'])
+        self.close(pk)
+        workspace = self.client.get('/api/workspace/').data['state']
+        self.assertIsNone(workspace['shifts'][0]['cleanerVisitedAt'])
+        self.assertFalse(any(item['kind'] == 'cleaner' for item in workspace['activity']))
+        self.assertIsNone(self.client.get(f'/api/shifts/{pk}/').data['cleanerVisitedAt'])
+        self.assertEqual(self.client.get('/api/cleaner-visits/').status_code, 403)
+        self.client.force_authenticate(self.manager)
+        self.assertIsNotNone(self.client.get(f'/api/shifts/{pk}/').data['cleanerVisitedAt'])
 
 
 class CleanerConcurrencyTests(TransactionTestCase):

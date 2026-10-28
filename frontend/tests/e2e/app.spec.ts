@@ -93,7 +93,31 @@ for (const options of [{ noShift: true }, { staff: true }, { owner: true }]) {
   });
 }
 
-test("cleaner history filters month and opens the exact shift", async ({
+test("administrators cannot open cleaner history from More or a direct link", async ({
+  page,
+}) => {
+  await setup(page);
+  let historyRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/cleaner-visits/")) historyRequests += 1;
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Уборщица", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "История смен/задач", exact: true }),
+  ).toBeVisible();
+  await page.goto("/?cleaner=2026-10");
+  await expect(page.getByRole("alert")).toContainText(
+    "только управляющим и суперпользователям",
+  );
+  await expect(page.getByLabel("Месяц и год")).toHaveCount(0);
+  expect(historyRequests).toBe(0);
+});
+
+test("cleaner history filters month and shows only date time and administrator", async ({
   page,
 }, info) => {
   await setup(page, { staff: true });
@@ -114,18 +138,11 @@ test("cleaner history filters month and opens the exact shift", async ({
     path: info.outputPath("cleaner-history.png"),
     fullPage: true,
   });
-  await page
-    .getByRole("button", { name: "Открыть смену", exact: true })
-    .click();
   await expect(
-    page.getByRole("heading", { name: "Детали смены" }),
-  ).toBeVisible();
-  await expect(page.getByText("51 500 ₽", { exact: true })).toBeVisible();
-  await page.evaluate(() =>
-    (window as unknown as { testBack: () => void }).testBack(),
-  );
-  await expect(page.getByLabel("Месяц и год", { exact: true })).toHaveValue(
-    "2026-10",
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".cp-cleaner-record")).toContainText(
+    "Алексей Смирнов",
   );
 });
 

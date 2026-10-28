@@ -91,7 +91,66 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
   const admin = await session(browser, 91001);
   const manager = await session(browser, 91002);
   const owner = await session(browser, 91003);
+  let currentScheduleId = "";
   try {
+    await owner.page.getByRole("button", { name: "Ещё", exact: true }).click();
+    const overviewResponse = owner.page.waitForResponse((response) =>
+      response.url().endsWith("/api/schedules/"),
+    );
+    await owner.page
+      .getByRole("button", { name: "График смен", exact: true })
+      .click();
+    currentScheduleId = (await (await overviewResponse).json()).current.id;
+    await owner.page
+      .getByText("Администратор по умолчанию", { exact: true })
+      .click();
+    await owner.page
+      .getByLabel("Администратор по умолчанию", { exact: true })
+      .selectOption({ label: "Stack Administrator" });
+    await owner.page
+      .getByRole("button", { name: "Сохранить сотрудника по умолчанию" })
+      .click();
+    await expect(
+      owner.page.getByText("Администратор по умолчанию сохранён."),
+    ).toBeVisible();
+    await owner.page
+      .getByRole("button", { name: "Следующий", exact: true })
+      .click();
+    await owner.page
+      .getByRole("button", { name: "Редактировать график" })
+      .click();
+    await owner.page.getByText("Автозаполнение 2/2", { exact: true }).click();
+    await owner.page.getByRole("button", { name: "Заполнить 2/2" }).click();
+    await expect(owner.page.getByRole("status")).toContainText(
+      "Недостающие позиции",
+    );
+    await owner.page
+      .getByRole("button", { name: "Сохранить график", exact: true })
+      .click();
+    await expect(owner.page.getByLabel("Версия графика")).toBeVisible();
+    await owner.page
+      .getByRole("button", { name: "Текущий", exact: true })
+      .click();
+    await owner.page
+      .getByRole("button", { name: "Редактировать график" })
+      .click();
+    const scheduleDay = new Intl.DateTimeFormat("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "Europe/Moscow",
+    }).format(new Date());
+    await owner.page
+      .getByRole("button", { name: `${scheduleDay} Ночь`, exact: true })
+      .click();
+    await owner.page
+      .getByRole("button", { name: "Сохранить график", exact: true })
+      .click();
+    await expect(owner.page.getByLabel("Версия графика")).toBeVisible();
+    await owner.page
+      .getByRole("navigation")
+      .getByRole("button", { name: "Задачи", exact: true })
+      .click();
     await manager.page
       .getByRole("button", { name: "Ещё", exact: true })
       .click();
@@ -252,13 +311,16 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
       manager.page.getByText("1\u00a0050 ₽", { exact: true }),
     ).toBeVisible();
     await expect(
-      manager.page.getByRole("button", { name: "История смен", exact: true }),
+      manager.page.getByRole("button", {
+        name: "История смен/задач",
+        exact: true,
+      }),
     ).toHaveCount(0);
     await manager.page
       .getByRole("button", { name: "Ещё", exact: true })
       .click();
     await manager.page
-      .getByRole("button", { name: "История смен", exact: true })
+      .getByRole("button", { name: "История смен/задач", exact: true })
       .click();
     await expect(manager.page.locator(".cp-history-total")).toContainText(
       "600 ₽",
@@ -314,16 +376,9 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
       `${process.env.STACK_BASE_URL}/?cleaner=${new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" }).slice(0, 7)}`,
     );
     await expect(owner.page.getByText(/Уборщица пришла/)).toBeVisible();
-    await owner.page
-      .getByRole("button", { name: "Открыть смену", exact: true })
-      .click();
     await expect(
-      owner.page.getByRole("heading", { name: "Детали смены" }),
-    ).toBeVisible();
-    await expect(owner.page.getByText("600 ₽", { exact: true })).toBeVisible();
-    await expect(
-      owner.page.getByRole("img", { name: "Чек закрытия смены", exact: true }),
-    ).toBeVisible();
+      owner.page.getByRole("button", { name: "Открыть смену", exact: true }),
+    ).toHaveCount(0);
     await owner.page.goto(`${process.env.STACK_BASE_URL}/?expense=1`);
     await expect(
       owner.page.getByRole("heading", { name: "Расход из кассы" }),
@@ -331,6 +386,18 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     await expect(
       owner.page.getByText("Cleaning supplies", { exact: true }),
     ).toBeVisible();
+    await owner.page.goto(
+      `${process.env.STACK_BASE_URL}/?schedule=${currentScheduleId}`,
+    );
+    await owner.page
+      .getByRole("button", { name: `${scheduleDay} Ночь`, exact: true })
+      .click();
+    await expect(owner.page.getByLabel("Детали ячейки графика")).toContainText(
+      "План при открытии: Stack Administrator · версия 2",
+    );
+    await expect(owner.page.getByLabel("Детали ячейки графика")).toContainText(
+      "Фактически: Stack Administrator",
+    );
   } finally {
     await admin.context.close();
     await manager.context.close();

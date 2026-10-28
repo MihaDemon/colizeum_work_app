@@ -6,6 +6,8 @@ class EvidenceFile(ImageFieldFile):
     @property
     def url(self):
         self._require_file()
+        if self.instance._meta.model_name == 'scheduleperiod':
+            return f'/api/schedules/{self.instance.pk}/image/'
         kinds = {'reportphoto': 'report', 'expensephoto': 'expense', 'task': 'reference', 'tasksubmission': 'submission', 'tasksubmissionphoto': 'submission-photo'}
         kind = kinds[self.instance._meta.model_name]
         return f'/api/files/{kind}/{self.instance.pk}/'
