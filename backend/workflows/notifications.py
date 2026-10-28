@@ -120,6 +120,10 @@ def deliver_one(send=telegram_send):
     job = TelegramNotification.objects.select_related('recipient', 'submission__task', 'task', 'shift__cleaner_visit', 'schedule').filter(pk=job.pk).first()
     if job is None or job.status != 'sending' or job.claim_token != claim:
         return True
+    related_task = job.task if job.kind == 'task_assigned' else job.submission.task if job.kind == 'task' else None
+    if related_task and related_task.deleted_at:
+        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Задача удалена.')
+        return True
     if job.recipient_id is None:
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель удалён.')
         return True

@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.formats import number_format
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -124,8 +125,8 @@ def create_task(user, data):
         raise PermissionDenied('Выберите администратора или управляющего, которому можно назначить задачу.')
     shift = Shift.objects.filter(closed_at__isnull=True).first()
     if actor_role == 'manager':
-        if target_role != 'admin' or not shift or shift.admin_id != assignee.pk:
-            raise PermissionDenied('Управляющий может назначать задачи администратору текущей смены.')
+        if target_role != 'admin':
+            raise PermissionDenied('Управляющий может назначать задачи только активным администраторам.')
     task = Task.objects.create(creator=user, shift=shift if shift and shift.admin_id == assignee.pk else None, **data)
     event(user, 'Задача назначена', task.title, kind='task', task=task)
     queue_task_assigned(task)
@@ -133,10 +134,26 @@ def create_task(user, data):
 
 
 @transaction.atomic
+def delete_task(user, pk):
+    lock_register(user)
+    task = Task.objects.select_for_update().get(pk=pk)
+    if not (user.is_superuser or (user.is_staff and task.creator_id == user.pk)):
+        raise PermissionDenied('Удалить задачу может её постановщик или суперпользователь.')
+    if task.deleted_at or task.status == Task.Status.ACCEPTED:
+        raise Conflict('Можно удалить только незавершённую задачу.')
+    task.deleted_at = timezone.now()
+    task.save(update_fields=['deleted_at'])
+    TelegramNotification.objects.filter(Q(task=task) | Q(submission__task=task), status__in=['pending', 'sending']).update(status='failed', last_error='Задача удалена.')
+    event(user, 'Задача удалена', task.title, kind='task', task=task)
+
+
+@transaction.atomic
 def submit_task(user, pk, data):
     # Shared lock order (register, then task) avoids a close/create/submit deadlock.
     lock_register(user)
     task = Task.objects.select_for_update().get(pk=pk)
+    if task.deleted_at:
+        raise Conflict('Задача удалена.')
     if role(user) == 'superuser' or task.assignee_id != user.pk:
         raise PermissionDenied('Выполнить задачу может только назначенный сотрудник.')
     if role(user) == 'admin':
@@ -201,6 +218,8 @@ def save_photo_settings(user, data):
 def review_task(user, pk, data):
     lock_register(user)
     task = Task.objects.select_for_update().get(pk=pk)
+    if task.deleted_at:
+        raise Conflict('Задача удалена.')
     if task.assignee_id == user.pk or not (user.is_superuser or (user.is_staff and task.creator_id == user.pk)):
         raise PermissionDenied('Проверить задачу может только её постановщик или суперпользователь.')
     if task.status != Task.Status.MODERATION or task.submission_version != data['version']:

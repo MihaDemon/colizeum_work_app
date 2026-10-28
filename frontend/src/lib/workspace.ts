@@ -118,6 +118,7 @@ export type NewTask = Pick<
 };
 
 export type Action =
+  | { type: "DELETE_TASK"; actorId: string; taskId: string }
   | { type: "MARK_CLEANER"; actorId: string; shiftId: string; confirmed: true }
   | { type: "OPEN_SHIFT"; actorId: string; shiftType: "day" | "night" }
   | {

@@ -99,7 +99,8 @@ def workspace_data(user):
     people_ids.update(r.admin_id for r in legacy_reports if r.admin_id)
     activity_list = list(activity[:200])
     people_ids.update(a.actor_id for a in activity_list if a.actor_id)
-    people = get_user_model().objects.select_related('phone_number').filter(Q(pk__in=people_ids) | (Q(is_active=True) if user.is_superuser else Q(pk=user.pk)))
+    available = Q(is_active=True) if user.is_superuser else Q(is_active=True, is_staff=False, is_superuser=False) if user.is_staff else Q(pk=user.pk)
+    people = get_user_model().objects.select_related('phone_number').filter(Q(pk__in=people_ids) | available)
     legacy = [{
         'id': f'legacy-{r.pk}', 'adminId': participant_id(r, 'admin'), 'type': r.shift,
         # A date anchor is only used to format the date; the UI does not invent shift times.

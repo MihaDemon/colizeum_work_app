@@ -6,6 +6,73 @@ const namedFields = [
   { id: "after", label: "After cleaning", required: true },
 ];
 
+test("manager creates tasks for active administrators without an open shift", async ({
+  page,
+}) => {
+  await setup(page, { staff: true, noShift: true });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Создать задачу", exact: true })
+    .click();
+  const choices = page.getByLabel("Исполнитель", { exact: true });
+  await expect(choices).toContainText("Администратор смены");
+  await expect(choices).not.toContainText("Управляющий");
+  await page
+    .getByLabel("Название задачи", { exact: true })
+    .fill("Подготовить места");
+  await page
+    .getByLabel("Инструкции к задаче", { exact: true })
+    .fill("Проверить все игровые места.");
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith("/api/tasks/") && r.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Назначить задачу", exact: true })
+    .click();
+  expect((await sent).postData()).toContain('name="assignee"\r\n\r\n3');
+});
+
+for (const role of ["owner", "creator", "recipient", "admin"] as const) {
+  test(`task deletion permissions and confirmation: ${role}`, async ({
+    page,
+  }) => {
+    await setup(page, {
+      owner: role === "owner",
+      staff: role === "creator" || role === "recipient",
+      ownTask: role === "creator",
+    });
+    await page.goto("/");
+    if (role === "creator")
+      await page
+        .getByRole("button", { name: "Поставленные мной", exact: true })
+        .click();
+    await page.getByRole("button", { name: /Убрать игровые места/ }).click();
+    const remove = page.getByRole("button", {
+      name: "Удалить задачу",
+      exact: true,
+    });
+    if (role === "recipient" || role === "admin") {
+      await expect(remove).toHaveCount(0);
+      return;
+    }
+    page.once("dialog", (d) => d.dismiss());
+    await remove.click();
+    await expect(remove).toBeVisible();
+    page.once("dialog", (d) => d.accept());
+    const deleted = page.waitForRequest(
+      (r) => r.method() === "DELETE" && r.url().endsWith("/api/tasks/task-1/"),
+    );
+    await remove.click();
+    expect((await deleted).headers()["idempotency-key"]).toBeTruthy();
+    await expect(
+      page.getByRole("heading", { name: "Убрать игровые места" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /Убрать игровые места/ }),
+    ).toHaveCount(0);
+  });
+}
+
 test("superuser personnel creates and edits manager activity", async ({
   page,
 }, info) => {
@@ -649,6 +716,7 @@ async function setup(
     photoMode?: "single" | "multiple" | "named";
     taskPhotoFields?: { id: string; label: string; required: boolean }[];
     events?: boolean;
+    ownTask?: boolean;
   } = {},
 ) {
   await page.route("https://telegram.org/**", (route) =>
@@ -712,6 +780,7 @@ async function setup(
   let cleanerVisitedAt: string | null = null;
   let balance = 1000;
   let taskStatus = "active";
+  let taskRemoved = false;
   let contactChecks = 0;
   let photoSettings = {
     reportFields: options.reportFields || [
@@ -776,6 +845,10 @@ async function setup(
         },
       });
     expect(route.request().headers().authorization).toBe("Token valid-token");
+    if (path === "/api/tasks/task-1/" && method === "DELETE") {
+      taskRemoved = true;
+      return route.fulfill({ status: 204 });
+    }
     if (path === "/api/cash-adjustment/") {
       const data = route.request().postDataJSON();
       expect(data.expected_balance).toBe(balance.toFixed(2));
@@ -874,22 +947,28 @@ async function setup(
                     ]
                   : [],
                 shifts: [],
-                tasks: [
-                  {
-                    id: "task-1",
-                    title: "Убрать игровые места",
-                    description: "Wipe keyboards",
-                    adminId: "1",
-                    managerId: options.deletedManager ? "deleted-2" : "2",
-                    requiresPhoto: true,
-                    photoMode: options.photoMode || "single",
-                    photoRequirements: options.taskPhotoFields || [],
-                    photos: submittedPhotos,
-                    priority: "normal",
-                    status: taskStatus,
-                    createdAt: new Date().toISOString(),
-                  },
-                ],
+                tasks: taskRemoved
+                  ? []
+                  : [
+                      {
+                        id: "task-1",
+                        title: "Убрать игровые места",
+                        description: "Wipe keyboards",
+                        adminId: options.ownTask ? "3" : "1",
+                        managerId: options.ownTask
+                          ? "1"
+                          : options.deletedManager
+                            ? "deleted-2"
+                            : "2",
+                        requiresPhoto: true,
+                        photoMode: options.photoMode || "single",
+                        photoRequirements: options.taskPhotoFields || [],
+                        photos: submittedPhotos,
+                        priority: "normal",
+                        status: taskStatus,
+                        createdAt: new Date().toISOString(),
+                      },
+                    ],
               },
             },
       });

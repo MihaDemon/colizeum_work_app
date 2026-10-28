@@ -118,6 +118,12 @@ class TaskViewSet(viewsets.GenericViewSet):
         return Response(task_data(self.get_object()))
 
     @idempotent_command
+    def destroy(self, request, pk=None):
+        self.get_object()
+        services.delete_task(request.user, pk)
+        return Response({}, status=204)
+
+    @idempotent_command
     def create(self, request):
         task = services.create_task(request.user, validated(CreateTaskSerializer, request))
         return Response(task_data(task), status=201)
