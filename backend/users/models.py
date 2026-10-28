@@ -11,6 +11,7 @@ from users.constraints import (
 
 
 class AdminUser(models.Model):
+    is_active = models.BooleanField(default=True, verbose_name='Активен')
     role = models.CharField(max_length=7, choices=[('admin', 'Администратор'), ('manager', 'Управляющий')], default='admin', verbose_name='Роль')
     telegram_id = models.CharField(max_length=255, unique=True, null=True, blank=True, verbose_name='Telegram ID')
 

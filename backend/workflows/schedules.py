@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .models import SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift
+from .models import Activity, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift
 from .notifications import MOSCOW, queue_management
 from .permissions import person
 from .presentation import participant_name
@@ -266,3 +266,4 @@ def publish_due_schedules():
         period.summary_created_at = timezone.now()
         period.save(update_fields=['summary_image', 'summary_created_at'])
         queue_management('schedule', f'Итоговый график {period}. Версия {period.version}. План и фактические смены.', schedule=period)
+        Activity.objects.create(title='Итоговый график готов', description=f'График {period}. Версия {period.version}. План и фактические смены.', kind='schedule')

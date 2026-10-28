@@ -40,11 +40,12 @@ class StaffRegistrationTests(APITestCase):
                 ident = 501 + index
                 self.client.force_login(self.owner)
                 form = self.client.get(reverse('admin:users_adminuser_add')).context['adminform'].form
-                self.assertEqual(set(form.fields), {'first_name', 'last_name', 'phone_number', 'role'})
+                self.assertEqual(set(form.fields), {'first_name', 'last_name', 'phone_number', 'role', 'is_active'})
+                self.assertTrue(form.fields['is_active'].initial)
                 response = self.client.post(reverse('admin:users_adminuser_add'), {
                     'first_name': 'Алексей', 'last_name': 'Смирнов',
                     'phone_number': f'+7 ({phone[:3]}) {phone[3:6]}-{phone[6:8]}-{phone[8:]}',
-                    'role': role, '_save': 'Save', 'telegram_id': 'attacker-controlled',
+                    'role': role, 'is_active': 'on', '_save': 'Save', 'telegram_id': 'attacker-controlled',
                 })
                 self.assertEqual(response.status_code, 302)
                 contact = AdminUser.objects.get(pk=phone)
@@ -123,7 +124,7 @@ class StaffRegistrationTests(APITestCase):
         self.client.force_login(self.owner)
         url = reverse('admin:users_adminuser_change', args=[contact.pk])
         for role in ['manager', 'admin']:
-            response = self.client.post(url, {'first_name': 'Алексей', 'last_name': 'Смирнов', 'role': role, '_save': 'Save'})
+            response = self.client.post(url, {'first_name': 'Алексей', 'last_name': 'Смирнов', 'role': role, 'is_active': 'on', '_save': 'Save'})
             self.assertEqual(response.status_code, 302)
             account.refresh_from_db()
             self.assertEqual((account.first_name, account.last_name), ('Алексей', 'Смирнов'))

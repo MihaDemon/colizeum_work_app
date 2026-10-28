@@ -37,7 +37,11 @@ import {
   IconMessageCircle,
   IconInfoCircle,
   IconBrush,
+  IconUsers,
 } from "@tabler/icons-react";
+import { PersonnelPage } from "../components/PersonnelPage";
+import { NotificationSettings } from "../components/NotificationSettings";
+import { CashBalance } from "../components/CashBalance";
 import { Equipment } from "../pages/Equipment";
 import { PrivateImage } from "../components/PrivateImage";
 import { SchedulePage } from "../components/SchedulePage";
@@ -85,6 +89,7 @@ import {
 import "./workspace.css";
 
 type View =
+  | "personnel"
   | "schedule"
   | "cleaner"
   | "shift"
@@ -118,6 +123,7 @@ export interface WorkspaceProps {
   busy: boolean;
   error: string;
   perform: (action: Action) => Promise<void>;
+  refresh?: () => Promise<void>;
 }
 function Status({ status }: { status: Task["status"] }) {
   return (
@@ -178,7 +184,15 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       const detail = (
         event as CustomEvent<{ source?: string; dirty: boolean; busy: boolean }>
       ).detail;
-      if (detail.source === "equipment" || detail.source === "schedule")
+      if (
+        [
+          "equipment",
+          "schedule",
+          "personnel",
+          "cash",
+          "notification-settings",
+        ].includes(detail.source || "")
+      )
         equipmentDraft.current = detail;
     };
     window.addEventListener("draft-status", listen);
@@ -250,6 +264,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       "photo-settings",
       "cleaner",
       "schedule",
+      "personnel",
     ].includes(view),
   );
   const navigate = useCallback((target: View) => {
@@ -269,7 +284,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   }, []);
   const back = useCallback(() => {
     if (busy || equipmentDraft.current.busy) return;
-    if (dirty && !window.confirm("Выйти без сохранения изменений?")) return;
+    if (
+      (dirty || equipmentDraft.current.dirty) &&
+      !window.confirm("Выйти без сохранения изменений?")
+    )
+      return;
     setDirty(false);
     if (linkedRecord) setLinkedRecord(null);
     else if (form) setForm(null);
@@ -441,7 +460,15 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       <button
                         className="cp-button cp-button-primary"
                         disabled={!state.shift && user.role !== "superuser"}
-                        onClick={() => setForm("create")}
+                        onClick={() => {
+                          if (equipmentDraft.current.busy) return;
+                          if (
+                            equipmentDraft.current.dirty &&
+                            !window.confirm("Выйти без сохранения изменений?")
+                          )
+                            return;
+                          setForm("create");
+                        }}
                       >
                         <IconPlus size={18} />
                         Создать задачу
@@ -487,7 +514,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         {(ownsShift || isManager) && (
                           <div className="cp-cash">
                             <span>Наличные в кассе</span>
-                            <strong>{money(state.balance)}</strong>
+                            <CashBalance
+                              balance={state.balance}
+                              editable={user.role === "superuser"}
+                              onSaved={async () => {
+                                await workspace.refresh?.();
+                                notify("Остаток кассы обновлён.");
+                              }}
+                              onDirty={setDirty}
+                              onRefresh={async () => {
+                                await workspace.refresh?.();
+                              }}
+                            />
                           </div>
                         )}
                       </section>
@@ -502,7 +540,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </div>
                         <div className="cp-cash">
                           <span>Наличные в кассе</span>
-                          <strong>{money(state.balance)}</strong>
+                          <CashBalance
+                            balance={state.balance}
+                            editable={user.role === "superuser"}
+                            onSaved={async () => {
+                              await workspace.refresh?.();
+                              notify("Остаток кассы обновлён.");
+                            }}
+                            onDirty={setDirty}
+                            onRefresh={async () => {
+                              await workspace.refresh?.();
+                            }}
+                          />
                         </div>
                       </section>
                     ) : (
@@ -635,6 +684,12 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     <TaskList
                       tasks={filteredTasks}
                       onSelect={(id) => {
+                        if (equipmentDraft.current.busy) return;
+                        if (
+                          equipmentDraft.current.dirty &&
+                          !window.confirm("Выйти без сохранения изменений?")
+                        )
+                          return;
                         setSelectedTask(id);
                         setDirty(false);
                         window.scrollTo({ top: 0 });
@@ -706,6 +761,15 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                             },
                           ]
                         : []),
+                      ...(user.role === "superuser"
+                        ? [
+                            {
+                              id: "personnel" as const,
+                              label: "Персонал",
+                              icon: IconUsers,
+                            },
+                          ]
+                        : []),
                     ].map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
@@ -733,6 +797,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   onBack={back}
                   onDirty={() => setDirty(true)}
                   onSave={(action, message) => save(action, message)}
+                />
+              )}
+              {view === "personnel" && user.role === "superuser" && (
+                <PersonnelPage
+                  onBack={back}
+                  onChanged={async () => {
+                    await workspace.refresh?.();
+                  }}
                 />
               )}
               {view === "cleaner" && isManager && (
@@ -780,7 +852,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   </div>
                   <div className="cp-register-strip">
                     <span>Наличные в кассе</span>
-                    <strong>{money(state.balance)}</strong>
+                    <CashBalance
+                      balance={state.balance}
+                      editable={user.role === "superuser"}
+                      onSaved={async () => {
+                        await workspace.refresh?.();
+                        notify("Остаток кассы обновлён.");
+                      }}
+                      onDirty={setDirty}
+                      onRefresh={async () => {
+                        await workspace.refresh?.();
+                      }}
+                    />
                   </div>
                   <div className="cp-records">
                     {state.expenses
@@ -923,10 +1006,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   <div className="cp-page-heading">
                     <h1>Уведомления</h1>
                   </div>
-                  <p className="cp-list-hint">
-                    После выполнения задачи её постановщик получает уведомление
-                    в Telegram.
-                  </p>
+                  {isManager && <NotificationSettings />}
                   {activities.map((item) => (
                     <div className="cp-notification" key={item.id}>
                       <div>
@@ -1381,6 +1461,7 @@ function WorkflowForm({
   const assignees = people.filter(
     (person) =>
       !person.deleted &&
+      person.isActive !== false &&
       (user.role === "superuser"
         ? person.role === "admin" || person.role === "manager"
         : person.role === "admin" && person.id === state.shift?.adminId),

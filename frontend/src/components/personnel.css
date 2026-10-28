@@ -1,0 +1,57 @@
+.cp-personnel > .cp-back {
+  margin-bottom: 16px;
+}
+.cp-personnel > .cp-button {
+  margin-bottom: 20px;
+}
+.cp-personnel .cp-form-panel {
+  max-width: 520px;
+}
+.cp-personnel fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.cp-personnel .cp-toggle-field {
+  margin: 24px 0;
+  font-weight: 400;
+}
+.cp-personnel-list {
+  margin-top: 20px;
+}
+.cp-personnel-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--cp-line);
+  cursor: pointer;
+}
+.cp-personnel-row span {
+  min-width: 0;
+}
+.cp-personnel-row strong {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cp-personnel-row small {
+  display: block;
+  margin-top: 6px;
+  color: var(--cp-muted, #a0a1ac);
+  line-height: 1.5;
+}
+.cp-personnel-row svg {
+  flex-shrink: 0;
+}
+.cp-personnel-row:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

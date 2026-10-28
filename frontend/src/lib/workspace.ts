@@ -28,6 +28,7 @@ export interface StaffMember {
   initials: string;
   role: Role;
   deleted?: boolean;
+  isActive?: boolean;
 }
 
 export interface Task {
@@ -91,7 +92,8 @@ export interface Activity {
   title: string;
   description: string;
   time: string;
-  kind: "shift" | "task" | "expense" | "telegram" | "cleaner";
+  kind:
+    "shift" | "task" | "expense" | "telegram" | "cleaner" | "schedule" | "cash";
   actorId?: string;
   managerId?: string;
 }

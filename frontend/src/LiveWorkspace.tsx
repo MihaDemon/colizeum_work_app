@@ -188,6 +188,8 @@ export default function LiveWorkspace({ account }: { account: User }) {
       <Loading />
     );
   return (
-    <Workspace workspace={{ ...snapshot, account, busy, error, perform }} />
+    <Workspace
+      workspace={{ ...snapshot, account, busy, error, perform, refresh }}
+    />
   );
 }
