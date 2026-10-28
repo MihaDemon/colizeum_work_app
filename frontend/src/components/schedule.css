@@ -1,0 +1,102 @@
+.schedule-page {
+  min-width: 0;
+}
+.schedule-page .cp-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding-inline: 10px;
+}
+.schedule-period-title {
+  font-size: 18px;
+  margin-top: 24px;
+}
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+.schedule-editor {
+  margin-block: 20px;
+  padding-block: 12px;
+  border-block: 1px solid var(--cp-line);
+}
+.schedule-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+.schedule-choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--cp-accent);
+}
+.schedule-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-block: 24px;
+}
+.schedule-grid th {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cp-muted);
+  padding: 8px 2px;
+}
+.schedule-grid th:first-child {
+  width: 52px;
+}
+.schedule-grid td {
+  border: 1px solid var(--cp-line);
+  padding: 0;
+  vertical-align: stretch;
+}
+.schedule-grid td button {
+  background: var(--cp-bg);
+  border: 0;
+  width: 100%;
+  min-height: 72px;
+  height: 100%;
+  padding: 10px 6px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--cp-text);
+  overflow-wrap: anywhere;
+}
+.schedule-grid td button:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
+}
+.schedule-grid td button[aria-pressed="true"] {
+  background: var(--cp-panel);
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
+}
+.schedule-grid .schedule-actual small {
+  display: block;
+  font-size: 11px;
+  color: var(--cp-accent);
+  margin-top: 4px;
+}
+.schedule-cell-detail,
+.schedule-default {
+  border-top: 1px solid var(--cp-line);
+  padding-top: 20px;
+  margin-top: 24px;
+}
+.schedule-summary {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 18px;
+}
+.schedule-page summary {
+  cursor: pointer;
+  padding-block: 14px;
+}
+:root[data-theme="light"] .schedule-grid .schedule-actual small {
+  color: #665500;
+}

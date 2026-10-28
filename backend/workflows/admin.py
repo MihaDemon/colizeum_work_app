@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import Activity, CleanerVisit, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
+from .models import Activity, CleanerVisit, PhotoSettings, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 from .forms import WorkflowForm
 
 
@@ -8,7 +8,7 @@ class WorkflowAdmin(admin.ModelAdmin):
     form = WorkflowForm
 
     def get_readonly_fields(self, request, obj=None):
-        return ('user_snapshots',) if hasattr(self.model, 'user_snapshots') else ()
+        return tuple(field.name for field in self.model._meta.fields if not field.editable and not field.primary_key)
 
     def has_add_permission(self, request):
         return request.user.is_superuser
@@ -55,3 +55,16 @@ admin.site.register(ShiftExpense, WorkflowAdmin)
 class CleanerVisitAdmin(WorkflowAdmin):
     list_display = ['id', 'shift', 'admin', 'occurred_at']
     list_filter = ['occurred_at', 'admin']
+
+
+admin.site.register(SchedulePeriod, WorkflowAdmin)
+admin.site.register(ScheduleRevision, WorkflowAdmin)
+
+
+@admin.register(ScheduleSettings)
+class ScheduleSettingsAdmin(WorkflowAdmin):
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'default_admin':
+            from .schedules import active_admins
+            kwargs['queryset'] = active_admins()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)

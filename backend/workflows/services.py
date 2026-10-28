@@ -46,6 +46,8 @@ def open_shift(user, data):
         raise Conflict('Предыдущая смена ещё открыта.')
     settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     shift = Shift.objects.create(admin=user, photo_requirements=settings.report_fields, **data)
+    from .schedules import bind_shift
+    bind_shift(shift)
     event(user, 'Смена открыта', shift.get_shift_type_display())
     register = CashRegister.objects.get(pk=1)
     queue_management('shift_open', f'Смена открыта\nАдминистратор: {person(user)["name"]}\nТип: {shift.get_shift_type_display()}\nВремя: {shift.opened_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}\nНаличные в кассе: {number_format(register.balance, decimal_pos=2, force_grouping=True)} ₽', shift=shift)

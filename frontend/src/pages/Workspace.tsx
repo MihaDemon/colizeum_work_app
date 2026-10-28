@@ -40,6 +40,7 @@ import {
 } from "@tabler/icons-react";
 import { Equipment } from "../pages/Equipment";
 import { PrivateImage } from "../components/PrivateImage";
+import { SchedulePage } from "../components/SchedulePage";
 import {
   CleanerHistory,
   NotificationDetails,
@@ -84,6 +85,7 @@ import {
 import "./workspace.css";
 
 type View =
+  | "schedule"
   | "cleaner"
   | "shift"
   | "tasks"
@@ -176,7 +178,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       const detail = (
         event as CustomEvent<{ source?: string; dirty: boolean; busy: boolean }>
       ).detail;
-      if (detail.source === "equipment") equipmentDraft.current = detail;
+      if (detail.source === "equipment" || detail.source === "schedule")
+        equipmentDraft.current = detail;
     };
     window.addEventListener("draft-status", listen);
     return () => window.removeEventListener("draft-status", listen);
@@ -188,8 +191,16 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const cleanerPrompt = useRef(false);
   const [saveError, setSaveError] = useState("");
   const [view, setView] = useState<View>(() =>
-    new URLSearchParams(location.search).has("cleaner") ? "cleaner" : "shift",
+    new URLSearchParams(location.search).has("schedule")
+      ? "schedule"
+      : new URLSearchParams(location.search).has("cleaner")
+        ? "cleaner"
+        : "shift",
   );
+  const [scheduleId, setScheduleId] = useState(() => {
+    const id = new URLSearchParams(location.search).get("schedule");
+    return id && /^[1-9]\d*$/.test(id) ? id : undefined;
+  });
   const [linkedRecord, setLinkedRecord] = useState<RecordTarget | null>(() =>
     notificationTarget(location.search),
   );
@@ -238,6 +249,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       "notifications",
       "photo-settings",
       "cleaner",
+      "schedule",
     ].includes(view),
   );
   const navigate = useCallback((target: View) => {
@@ -256,7 +268,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     window.scrollTo({ top: 0 });
   }, []);
   const back = useCallback(() => {
-    if (busy) return;
+    if (busy || equipmentDraft.current.busy) return;
     if (dirty && !window.confirm("Выйти без сохранения изменений?")) return;
     setDirty(false);
     if (linkedRecord) setLinkedRecord(null);
@@ -375,6 +387,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           className="cp-profile"
           aria-label={`Открыть раздел «Ещё»: ${user.name}`}
           onClick={() => {
+            if (equipmentDraft.current.busy) return;
             if (!dirty || window.confirm("Выйти без сохранения изменений?"))
               navigate("more");
           }}
@@ -660,6 +673,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   <div className="cp-menu" aria-label="Дополнительные разделы">
                     {[
                       {
+                        id: "schedule" as const,
+                        label: "График смен",
+                        icon: IconHistory,
+                      },
+                      {
                         id: "history" as const,
                         label: "История смен",
                         icon: IconHistory,
@@ -723,6 +741,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   onMonthChange={setCleanerMonth}
                   onBack={back}
                   onOpenShift={(id) => setLinkedRecord({ kind: "shift", id })}
+                />
+              )}
+              {view === "schedule" && (
+                <SchedulePage
+                  user={user}
+                  initialId={scheduleId}
+                  onBack={back}
+                  onDirty={setDirty}
+                  onOpenShift={(id, periodId) => {
+                    setScheduleId(periodId);
+                    setLinkedRecord({ kind: "shift", id });
+                  }}
                 />
               )}
               {view === "expenses" && (

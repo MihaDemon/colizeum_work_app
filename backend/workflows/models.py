@@ -19,6 +19,9 @@ class PhotoSettings(models.Model):
 
 
 class Shift(UserHistory):
+    schedule_revision = models.ForeignKey('ScheduleRevision', on_delete=models.PROTECT, null=True, blank=True, verbose_name='План при открытии')
+    schedule_date = models.DateField(null=True, blank=True, verbose_name='Дата в графике')
+    proposed_admin = models.JSONField(default=dict, editable=False, verbose_name='Назначенный сотрудник при открытии')
     photo_requirements = models.JSONField(default=default_report_fields, blank=True, verbose_name='Требования к фотографиям')
     admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор')
     shift_type = models.CharField(max_length=5, choices=[('day', 'День'), ('night', 'Ночь')], verbose_name='Тип смены')
@@ -134,7 +137,8 @@ class CleanerVisit(UserHistory):
 
 
 class TelegramNotification(UserHistory):
-    kind = models.CharField(max_length=12, default='task', choices=[('task', 'Задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица')], verbose_name='Событие')
+    schedule = models.ForeignKey('SchedulePeriod', on_delete=models.PROTECT, null=True, blank=True, verbose_name='График')
+    kind = models.CharField(max_length=12, default='task', choices=[('task', 'Задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица'), ('schedule', 'Итоговый график')], verbose_name='Событие')
     message = models.TextField(blank=True, verbose_name='Текст уведомления')
     submission = models.OneToOneField(TaskSubmission, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Выполнение задачи')
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Смена')
@@ -154,11 +158,13 @@ class TelegramNotification(UserHistory):
         indexes = [models.Index(fields=['status', 'next_attempt_at'])]
         constraints = [
             models.CheckConstraint(condition=(
-                Q(kind='task', submission__isnull=False, shift__isnull=True, expense__isnull=True)
-                | Q(kind__in=['shift_open', 'shift_close', 'cleaner'], submission__isnull=True, shift__isnull=False, expense__isnull=True)
-                | Q(kind='expense', submission__isnull=True, shift__isnull=True, expense__isnull=False)
+                Q(kind='task', submission__isnull=False, shift__isnull=True, expense__isnull=True, schedule__isnull=True)
+                | Q(kind__in=['shift_open', 'shift_close', 'cleaner'], submission__isnull=True, shift__isnull=False, expense__isnull=True, schedule__isnull=True)
+                | Q(kind='expense', submission__isnull=True, shift__isnull=True, expense__isnull=False, schedule__isnull=True)
+                | Q(kind='schedule', submission__isnull=True, shift__isnull=True, expense__isnull=True, schedule__isnull=False)
             ), name='notification_has_matching_target'),
             models.UniqueConstraint(fields=['kind', 'shift', 'recipient'], condition=Q(shift__isnull=False), name='unique_shift_event_recipient'),
+            models.UniqueConstraint(fields=['schedule', 'recipient'], condition=Q(kind='schedule'), name='unique_schedule_recipient'),
             models.UniqueConstraint(fields=['expense', 'recipient'], condition=Q(kind='expense'), name='unique_expense_recipient'),
         ]
 
@@ -176,3 +182,48 @@ class CommandReceipt(models.Model):
         verbose_name = 'Команда'
         verbose_name_plural = 'Команды'
         constraints = [models.UniqueConstraint(fields=['user', 'key'], name='unique_employee_command')]
+
+
+class ScheduleSettings(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    default_admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор по умолчанию')
+    version = models.PositiveIntegerField(default=1, verbose_name='Версия')
+
+    class Meta:
+        verbose_name = 'Настройки графика'
+        verbose_name_plural = 'Настройки графика'
+        constraints = [models.CheckConstraint(condition=Q(pk=1), name='one_schedule_settings')]
+
+
+class SchedulePeriod(models.Model):
+    start = models.DateField(unique=True, verbose_name='Начало периода')
+    end = models.DateField(verbose_name='Конец периода')
+    version = models.PositiveIntegerField(default=1, verbose_name='Текущая версия')
+    summary_image = EvidenceImageField(upload_to='schedules/%Y/%m/', blank=True, verbose_name='Итоговый график')
+    summary_created_at = models.DateTimeField(null=True, blank=True, verbose_name='Итог подготовлен')
+
+    class Meta:
+        verbose_name = 'График смен'
+        verbose_name_plural = 'Графики смен'
+        ordering = ['-start']
+        constraints = [models.CheckConstraint(condition=Q(end__gte=models.F('start')), name='schedule_valid_dates')]
+
+    def __str__(self):
+        return f'{self.start:%d.%m.%Y} — {self.end:%d.%m.%Y}'
+
+
+class ScheduleRevision(UserHistory):
+    period = models.ForeignKey(SchedulePeriod, on_delete=models.PROTECT, related_name='revisions', verbose_name='График')
+    number = models.PositiveIntegerField(verbose_name='Версия')
+    plan = models.JSONField(default=dict, editable=False, verbose_name='Назначения')
+    generation = models.JSONField(default=dict, editable=False, verbose_name='Параметры автозаполнения')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Автор изменений')
+    created_at = models.DateTimeField(default=timezone.now, verbose_name='Дата изменения')
+    source = models.CharField(max_length=12, default='manual', choices=[('initial', 'Создание'), ('manual', 'Вручную'), ('automatic', 'Автоматически'), ('restore', 'Восстановление')], verbose_name='Способ изменения')
+    restored_from = models.ForeignKey('self', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Восстановлена версия')
+
+    class Meta:
+        verbose_name = 'Версия графика'
+        verbose_name_plural = 'Версии графика'
+        ordering = ['-number']
+        constraints = [models.UniqueConstraint(fields=['period', 'number'], name='unique_schedule_revision')]

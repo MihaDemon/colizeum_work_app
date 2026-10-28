@@ -18,15 +18,15 @@ MOSCOW = ZoneInfo('Europe/Moscow')
 
 def mini_app_url(**target):
     parts = urlsplit(settings.WEBAPP_URL)
-    params = [(key, value) for key, value in parse_qsl(parts.query) if key not in ('task', 'shift', 'expense', 'cleaner')]
+    params = [(key, value) for key, value in parse_qsl(parts.query) if key not in ('task', 'shift', 'expense', 'cleaner', 'schedule')]
     return urlunsplit(parts._replace(query=urlencode(params + list(target.items()))))
 
 
-def queue_management(kind, message, *, shift=None, expense=None):
+def queue_management(kind, message, *, shift=None, expense=None, schedule=None):
     from django.contrib.auth import get_user_model
     recipients = get_user_model().objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True)).exclude(telegram_id__isnull=True).exclude(telegram_id='')
     TelegramNotification.objects.bulk_create([
-        TelegramNotification(kind=kind, message=message, shift=shift, expense=expense,
+        TelegramNotification(kind=kind, message=message, shift=shift, expense=expense, schedule=schedule,
                              recipient=recipient, next_attempt_at=timezone.now())
         for recipient in recipients
     ])
@@ -39,7 +39,9 @@ def telegram_send(recipient, task):
         raise DeliveryError('Не указан токен бота или Telegram ID получателя.')
     if isinstance(task, TelegramNotification):
         text = task.message
-        if task.kind == 'expense':
+        if task.kind == 'schedule':
+            label, target = 'Открыть график', {'schedule': task.schedule_id}
+        elif task.kind == 'expense':
             label, target = 'Открыть расход', {'expense': task.expense_id}
         elif task.kind == 'cleaner':
             visit = getattr(task.shift, 'cleaner_visit', None)
@@ -52,8 +54,21 @@ def telegram_send(recipient, task):
     payload = {'chat_id': recipient.telegram_id, 'text': text}
     if settings.WEBAPP_URL:
         payload['reply_markup'] = {'inline_keyboard': [[{'text': label, 'web_app': {'url': mini_app_url(**target)}}]]}
-    request = Request(f'https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage',
-                      data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}, method='POST')
+    method = 'sendMessage'
+    body, content_type = json.dumps(payload).encode(), 'application/json'
+    if isinstance(task, TelegramNotification) and task.kind == 'schedule':
+        method = 'sendPhoto'
+        payload['caption'] = payload.pop('text')[:1024]
+        boundary = uuid.uuid4().hex
+        chunks = []
+        for key, value in payload.items():
+            value = json.dumps(value, ensure_ascii=False) if isinstance(value, dict) else str(value)
+            chunks.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+        with task.schedule.summary_image.open('rb') as picture:
+            chunks.extend([f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="schedule.png"\r\nContent-Type: image/png\r\n\r\n'.encode(), picture.read(), b'\r\n', f'--{boundary}--\r\n'.encode()])
+        body, content_type = b''.join(chunks), f'multipart/form-data; boundary={boundary}'
+    request = Request(f'https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/{method}',
+                      data=body, headers={'Content-Type': content_type}, method='POST')
     try:
         with urlopen(request, timeout=15) as response:
             result = json.load(response)
@@ -83,7 +98,7 @@ def deliver_one(send=telegram_send):
         job.attempts += 1
         job.next_attempt_at = now + timedelta(minutes=2)
         job.save(update_fields=['status', 'claim_token', 'attempts', 'next_attempt_at'])
-    job = TelegramNotification.objects.select_related('recipient', 'submission__task', 'shift__cleaner_visit').filter(pk=job.pk).first()
+    job = TelegramNotification.objects.select_related('recipient', 'submission__task', 'shift__cleaner_visit', 'schedule').filter(pk=job.pk).first()
     if job is None or job.status != 'sending' or job.claim_token != claim:
         return True
     if job.recipient_id is None:
