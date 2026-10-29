@@ -9,8 +9,8 @@ import {
 } from "../src/lib/format";
 
 describe("financial record dates", () => {
-  it("formats cleaner arrivals with a short year and Moscow time across a date boundary", () => {
-    expect(cleanerDateTime("2026-10-31T21:05:00Z")).toBe("01/11/26 00:05");
+  it("formats cleaner arrivals with a full year and Moscow time across a date boundary", () => {
+    expect(cleanerDateTime("2026-10-31T21:05:00Z")).toBe("01/11/2026 00:05");
   });
   it("shows calendar dates without a fabricated time", () => {
     expect(dateLabel("2026-10-12")).toBe("12 окт.");
