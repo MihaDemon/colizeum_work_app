@@ -133,7 +133,7 @@ export function Auth({
               <IconArrowUpRight size={20} />
             </button>
           </form>
-        ) : telegram()?.initData ? (
+        ) : (
           <button
             className="primary-button wide"
             disabled={busy}
@@ -141,7 +141,7 @@ export function Auth({
           >
             {busy ? "Входим…" : "Повторить вход"}
           </button>
-        ) : null}
+        )}
       </section>
     </main>
   );

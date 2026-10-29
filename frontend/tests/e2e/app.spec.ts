@@ -6,6 +6,71 @@ const namedFields = [
   { id: "after", label: "After cleaning", required: true },
 ];
 
+test("Android launch waits for the local Telegram SDK when telegram.org is blocked", async ({
+  page,
+}) => {
+  await setup(page, { realTelegram: true });
+  let externalRequests = 0;
+  await page.route("https://telegram.org/**", (route) => {
+    externalRequests += 1;
+    return route.abort();
+  });
+  await page.route("**/vendor/telegram-web-app.js", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await route.continue();
+  });
+  const params = new URLSearchParams({
+    tgWebAppData: "signed-telegram-test-data",
+    tgWebAppPlatform: "android",
+    tgWebAppVersion: "8.0",
+    tgWebAppThemeParams: JSON.stringify({ bg_color: "#090a0d" }),
+  });
+  await page.goto(`/#${params}`);
+  await expect(
+    page.getByRole("heading", { name: "Текущая смена", exact: true }),
+  ).toBeVisible();
+  expect(externalRequests).toBe(0);
+});
+
+test("local Telegram SDK failure explains loading error and can retry", async ({
+  page,
+}) => {
+  await setup(page, { realTelegram: true });
+  let blocked = true;
+  await page.route("**/vendor/telegram-web-app.js", (route) =>
+    blocked ? route.abort() : route.continue(),
+  );
+  await page.goto(
+    `/#${new URLSearchParams({ tgWebAppData: "signed-telegram-test-data", tgWebAppPlatform: "android", tgWebAppVersion: "8.0" })}`,
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Не удалось загрузить подключение к Telegram",
+  );
+  blocked = false;
+  await page.getByRole("button", { name: "Повторить", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Текущая смена", exact: true }),
+  ).toBeVisible();
+});
+
+test("ordinary browser without Telegram launch data never authenticates", async ({
+  page,
+}) => {
+  await setup(page, { realTelegram: true });
+  let logins = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/telegram/telegram/")) logins += 1;
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Вход через Telegram", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Повторить вход", exact: true })
+    .click();
+  expect(logins).toBe(0);
+});
+
 test("manager creates tasks for active administrators without an open shift", async ({
   page,
 }) => {
@@ -385,7 +450,9 @@ test("cleaner history filters month and shows only date time and administrator",
   await expect(page.getByText("За этот месяц отметок нет")).toBeVisible();
   await page.getByLabel("Месяц и год", { exact: true }).fill("2026-10");
   await expect(page.locator(".cp-month-value")).toContainText("октябрь 2026");
-  await expect(page.getByText("Уборщица пришла 28/10/26 12:34")).toBeVisible();
+  await expect(
+    page.getByText("Уборщица пришла 28/10/2026 12:34"),
+  ).toBeVisible();
   await page.screenshot({
     path: info.outputPath("cleaner-history.png"),
     fullPage: true,
@@ -421,7 +488,9 @@ test("Telegram notification links open closed shift, expense and cleaner history
     page.getByRole("img", { name: "Чек расхода", exact: true }),
   ).toBeVisible();
   await page.goto("/?cleaner=2026-10");
-  await expect(page.getByText("Уборщица пришла 28/10/26 12:34")).toBeVisible();
+  await expect(
+    page.getByText("Уборщица пришла 28/10/2026 12:34"),
+  ).toBeVisible();
   await page.goto("/?shift=404");
   await expect(page.getByRole("alert")).toContainText("Запись недоступна");
 });
@@ -717,6 +786,7 @@ async function setup(
     taskPhotoFields?: { id: string; label: string; required: boolean }[];
     events?: boolean;
     ownTask?: boolean;
+    realTelegram?: boolean;
   } = {},
 ) {
   await page.route("https://telegram.org/**", (route) =>
@@ -724,7 +794,11 @@ async function setup(
   );
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.addInitScript(
-    ({ theme, contactShared }) => {
+    ({ theme, contactShared, realTelegram }) => {
+      if (realTelegram) {
+        Object.assign(window, { TelegramWebviewProxy: { postEvent() {} } });
+        return;
+      }
       const app = {
         initData: "signed-telegram-test-data",
         initDataUnsafe: { user: { id: 42, first_name: "Алексей" } },
@@ -771,6 +845,7 @@ async function setup(
     {
       theme: options.theme || "dark",
       contactShared: options.contactShared !== false,
+      realTelegram: options.realTelegram || false,
     },
   );
   await page.route("**/media/**", (route) =>

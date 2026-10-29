@@ -21,7 +21,7 @@ export const cleanerDateTime = (value: string) => {
   const date = new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
     month: "2-digit",
-    year: "2-digit",
+    year: "numeric",
     timeZone: "Europe/Moscow",
   })
     .format(new Date(value))

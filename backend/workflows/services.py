@@ -107,7 +107,7 @@ def mark_cleaner(user, pk):
     if CleanerVisit.objects.filter(shift=shift).exists():
         raise Conflict('Приход уборщицы уже отмечен в этой смене.')
     visit = CleanerVisit.objects.create(shift=shift, admin=user, occurred_at=timezone.now())
-    message = f'Уборщица пришла {visit.occurred_at.astimezone(MOSCOW):%d/%m/%y %H:%M}'
+    message = f'Уборщица пришла {visit.occurred_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}'
     event(user, 'Приход уборщицы', message, kind='cleaner')
     queue_management('cleaner', message, shift=shift)
     return visit
