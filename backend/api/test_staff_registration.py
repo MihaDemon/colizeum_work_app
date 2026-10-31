@@ -80,6 +80,19 @@ class StaffRegistrationTests(APITestCase):
                 self.assertFalse(form.is_valid())
                 self.assertTrue({'first_name', 'last_name', 'phone_number'}.issubset(form.errors))
 
+    def test_registration_accepts_30_character_username_and_rejects_31(self):
+        phone = '9991234567'
+        AdminUser.objects.create(phone_number=phone, first_name='Иван', last_name='Петров')
+        self.assertEqual(self.share_contact(502, phone).status_code, 200)
+        payload = {'initData': self.signed(502), 'phone_number': phone, 'username': 'u' * 31}
+        response = self.client.post('/api/telegram/telegram/', payload)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('username', response.data)
+        payload['username'] = 'u' * 30
+        response = self.client.post('/api/telegram/telegram/', payload)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(User.objects.filter(username='u' * 30).exists())
+
     def test_form_rejects_duplicate_numbers_in_different_formats(self):
         AdminUser.objects.create(phone_number='+79991234567', first_name='Existing', last_name='Сотрудник')
         form = AdminUserForm(data={'first_name': 'New', 'last_name': 'Сотрудник', 'phone_number': '8 (999) 123-45-67', 'role': 'admin'})
