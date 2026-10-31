@@ -24,7 +24,7 @@ export function Auth({
   }) => Promise<void>;
 }) {
   const [username, setUsername] = useState(
-    telegram()?.initDataUnsafe.user?.username?.slice(0, 20) || "",
+    telegram()?.initDataUnsafe.user?.username?.slice(0, 30) || "",
   );
   const [phone, setPhone] = useState("");
   const [localError, setLocalError] = useState("");
@@ -102,7 +102,7 @@ export function Auth({
                 name="username"
                 required
                 disabled={busy || verifying}
-                maxLength={20}
+                maxLength={30}
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
