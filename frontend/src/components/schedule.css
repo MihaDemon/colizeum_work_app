@@ -106,16 +106,3 @@
 .schedule-sending .cp-form-panel h2:first-child {
   margin-top: 0;
 }
-.schedule-sending .schedule-choice {
-  flex-direction: row;
-  justify-content: space-between;
-  min-height: 48px;
-  font: inherit;
-}
-.schedule-sending .schedule-choice input {
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
-  min-height: 22px;
-  padding: 0;
-}

@@ -78,7 +78,7 @@ def check_version(period, version):
 def settings_data():
     config, _ = ScheduleSettings.objects.get_or_create(pk=1)
     return {'defaultAdminId': str(config.default_admin_id) if config.default_admin_id else None, 'version': config.version,
-            'automaticEnabled': config.automatic_enabled, 'automaticContent': config.automatic_content,
+            'automaticContent': config.automatic_content,
             'manualContent': config.manual_content}
 
 
@@ -144,17 +144,12 @@ def configure(user, data):
             raise ValidationError('Выберите действующего администратора.')
         config.default_admin_id = pk
         fields.append('default_admin')
-    for field in ('automatic_enabled', 'automatic_content', 'manual_content'):
+    for field in ('automatic_content', 'manual_content'):
         if field in data:
             setattr(config, field, data[field])
             fields.append(field)
     config.version += 1
     config.save(update_fields=fields)
-    if not config.automatic_enabled:
-        from .models import TelegramNotification
-        TelegramNotification.objects.filter(kind='schedule', status__in=['pending', 'sending']).exclude(
-            schedule_delivery__source='manual',
-        ).update(status='skipped', last_error='Автоматическая отправка графиков выключена.')
     return settings_data()
 
 
@@ -280,7 +275,6 @@ def publish_due_schedules():
         period.summary_created_at = timezone.now()
         period.save(update_fields=['summary_image', 'summary_created_at'])
         config, _ = ScheduleSettings.objects.get_or_create(pk=1)
-        if config.automatic_enabled:
-            from .schedule_delivery import prepare_delivery
-            prepare_delivery(period, head(period), config.automatic_content, 'automatic', snapshot=snapshot)
+        from .schedule_delivery import prepare_delivery
+        prepare_delivery(period, head(period), config.automatic_content, 'automatic', snapshot=snapshot)
         Activity.objects.create(title='Итоговый график готов', description=f'График {period}. Версия {period.version}. План и фактические смены.', kind='schedule')

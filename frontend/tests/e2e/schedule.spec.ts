@@ -68,7 +68,6 @@ async function setup(
   let config = {
     defaultAdminId: null as string | null,
     version: 1,
-    automaticEnabled: true,
     automaticContent: "both",
     manualContent: "both",
   };
@@ -202,9 +201,6 @@ async function setup(
                 ? String(data.default_admin)
                 : null,
             }
-          : {}),
-        ...(Object.hasOwn(data, "automatic_enabled")
-          ? { automaticEnabled: data.automatic_enabled }
           : {}),
         ...(data.automatic_content
           ? { automaticContent: data.automatic_content }
@@ -543,21 +539,13 @@ test("owner configures manual and automatic content independently and keeps it a
     path: info.outputPath("schedule-send-settings.png"),
     fullPage: true,
   });
-  await page.getByLabel("Отправлять автоматически").uncheck();
-  await expect(
-    page.getByLabel("Содержание автоматической отправки"),
-  ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Сохранить настройки отправки", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText(
-    "Настройки отправки сохранены",
-  );
+  await expect(page.getByLabel("Отправлять автоматически")).toHaveCount(0);
+  await expect(page.getByText(/Уведомления → Итоговый график/)).toBeVisible();
   await page.evaluate(() =>
     (window as unknown as { testBack: () => void }).testBack(),
   );
   await expect(
-    page.getByText(/Автоматическая отправка выключена/),
+    page.getByText(/После этого срока отправляется автоматически: только факт/),
   ).toBeVisible();
   await expect(
     page.getByText("Только план · версия 1", { exact: true }),
@@ -578,5 +566,5 @@ test("owner configures manual and automatic content independently and keeps it a
   await expect(
     page.getByLabel("Содержание автоматической отправки"),
   ).toHaveValue("actual");
-  await expect(page.getByLabel("Отправлять автоматически")).not.toBeChecked();
+  await expect(page.getByLabel("Отправлять автоматически")).toHaveCount(0);
 });

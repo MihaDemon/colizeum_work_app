@@ -209,7 +209,6 @@ class ScheduleSettings(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     default_admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор по умолчанию')
     version = models.PositiveIntegerField(default=1, verbose_name='Версия')
-    automatic_enabled = models.BooleanField(default=True, verbose_name='Автоматическая отправка')
     automatic_content = models.CharField(max_length=6, choices=ScheduleContent.choices, default=ScheduleContent.BOTH, verbose_name='Содержание автоматической отправки')
     manual_content = models.CharField(max_length=6, choices=ScheduleContent.choices, default=ScheduleContent.BOTH, verbose_name='Содержание ручной отправки')
 

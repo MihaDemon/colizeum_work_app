@@ -63,7 +63,6 @@ export function errorMessage(data: unknown): string {
           sbp: "СБП",
           shift_type: "Тип смены",
           schedule_date: "Дата по графику",
-          automatic_enabled: "Автоматическая отправка",
           automatic_content: "Содержание автоматической отправки",
           manual_content: "Содержание ручной отправки",
           revision: "Версия графика",

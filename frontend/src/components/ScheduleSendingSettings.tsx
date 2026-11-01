@@ -12,7 +12,6 @@ export const scheduleContentNames: Record<ScheduleContent, string> = {
 export interface ScheduleSettings {
   defaultAdminId: string | null;
   version: number;
-  automaticEnabled: boolean;
   automaticContent: ScheduleContent;
   manualContent: ScheduleContent;
 }
@@ -77,7 +76,6 @@ export function ScheduleSendingSettings({
           setMessage("");
           const body = JSON.stringify({
             version: draft.version,
-            automatic_enabled: draft.automaticEnabled,
             automatic_content: draft.automaticContent,
             manual_content: draft.manualContent,
           });
@@ -130,20 +128,13 @@ export function ScheduleSendingSettings({
           <p className="cp-field-hint">
             После периода исправлений — управляющим и суперпользователям.
           </p>
-          <label className="schedule-choice">
-            Отправлять автоматически
-            <input
-              type="checkbox"
-              checked={draft.automaticEnabled}
-              onChange={(event) =>
-                change({ automaticEnabled: event.target.checked })
-              }
-            />
-          </label>
+          <p className="cp-field-hint">
+            Получение автоматических сообщений включается в разделе «Уведомления
+            → Итоговый график».
+          </p>
           <label className="cp-field">
             Содержание автоматической отправки
             <select
-              disabled={!draft.automaticEnabled}
               value={draft.automaticContent}
               onChange={(event) =>
                 change({

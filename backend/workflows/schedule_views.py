@@ -35,7 +35,6 @@ class Restore(Version):
 
 class Settings(Version):
     default_admin = serializers.IntegerField(min_value=1, allow_null=True, required=False)
-    automatic_enabled = serializers.BooleanField(required=False)
     automatic_content = serializers.ChoiceField(choices=ScheduleContent.choices, required=False)
     manual_content = serializers.ChoiceField(choices=ScheduleContent.choices, required=False)
 

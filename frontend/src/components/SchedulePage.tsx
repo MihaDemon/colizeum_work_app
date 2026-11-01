@@ -398,9 +398,7 @@ export function SchedulePage({
               <p className="cp-list-hint">
                 Версия {period.viewVersion}. Период исправлений заканчивается{" "}
                 {cleanerDateTime(period.sendAt)} по Москве.{" "}
-                {overview.settings.automaticEnabled !== false
-                  ? `После этого срока отправляется автоматически: ${scheduleContentNames[overview.settings.automaticContent || "both"].toLowerCase()}.`
-                  : "Автоматическая отправка выключена."}
+                {`После этого срока отправляется автоматически: ${scheduleContentNames[overview.settings.automaticContent || "both"].toLowerCase()}.`}
               </p>
               {!editing && (
                 <div className="schedule-actions">

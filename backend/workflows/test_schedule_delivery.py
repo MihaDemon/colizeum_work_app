@@ -131,30 +131,28 @@ class ScheduleDeliveryTests(APITestCase):
         self.assertEqual(self.send().status_code, 202)
         self.assertEqual(ScheduleDelivery.objects.filter(source='manual').count(), 2)
 
-    def test_disabling_automatic_delivery_preserves_archive_image_and_manual_send(self):
-        self.config.automatic_enabled = False
-        self.config.save()
+    def test_muting_notifications_preserves_archive_image_and_manual_send(self):
+        for user in (self.owner, self.manager):
+            NotificationPreferences.objects.create(user=user, telegram={'schedule': False})
         self.now.return_value = datetime.fromisoformat('2026-10-17T00:00:00+03:00')
         schedules.publish_due_schedules()
-        self.assertFalse(TelegramNotification.objects.exists())
+        self.assertEqual(TelegramNotification.objects.filter(status='skipped').count(), 2)
         self.period.refresh_from_db()
         self.assertTrue(self.period.summary_image)
         self.assertIsNotNone(self.period.summary_created_at)
-        self.config.automatic_enabled = True
-        self.config.save()
+        NotificationPreferences.objects.filter(user=self.owner).update(telegram={'schedule': True})
         schedules.publish_due_schedules()
-        self.assertFalse(TelegramNotification.objects.exists())
+        self.assertFalse(TelegramNotification.objects.filter(status='pending').exists())
         self.assertEqual(self.send().status_code, 202)
 
     def test_owner_configuration_is_versioned_and_does_not_clear_default_administrator(self):
         self.config.default_admin = self.planned
         self.config.save()
-        data = {'version': 1, 'manual_content': 'plan', 'automatic_content': 'actual', 'automatic_enabled': False}
+        data = {'version': 1, 'manual_content': 'plan', 'automatic_content': 'actual'}
         response = self.client.post('/api/schedules/settings/', data, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['manualContent'], 'plan')
         self.assertEqual(response.data['automaticContent'], 'actual')
-        self.assertFalse(response.data['automaticEnabled'])
         self.assertEqual(response.data['defaultAdminId'], str(self.planned.pk))
         self.assertEqual(self.client.post('/api/schedules/settings/', data, format='json').status_code, 409)
         data.update(version=2, manual_content='unknown')
@@ -162,23 +160,25 @@ class ScheduleDeliveryTests(APITestCase):
         self.client.force_authenticate(self.manager)
         self.assertEqual(self.client.post('/api/schedules/settings/', {'version': 2, 'manual_content': 'plan'}, format='json').status_code, 403)
 
-    def test_switching_automatic_delivery_off_skips_queued_automatic_copies_only(self):
+    def test_existing_notification_switch_skips_only_my_automatic_copy(self):
         self.now.return_value = datetime.fromisoformat('2026-10-17T00:00:00+03:00')
         schedules.publish_due_schedules()
         self.assertEqual(self.send().status_code, 202)
-        response = self.client.post('/api/schedules/settings/', {'version': 1, 'automatic_enabled': False}, format='json')
+        response = self.client.patch('/api/notification-settings/', {'schedule': False}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(TelegramNotification.objects.filter(schedule_delivery__source='automatic', status='skipped').count(), 2)
+        self.assertEqual(TelegramNotification.objects.get(schedule_delivery__source='automatic', recipient=self.owner).status, 'skipped')
+        self.assertEqual(TelegramNotification.objects.get(schedule_delivery__source='automatic', recipient=self.manager).status, 'pending')
         self.assertEqual(TelegramNotification.objects.get(schedule_delivery__source='manual').status, 'pending')
         send = Mock()
-        self.assertTrue(deliver_one(send))
-        send.assert_called_once()
+        while deliver_one(send):
+            pass
+        self.assertCountEqual([call.args[0].pk for call in send.call_args_list], [self.manager.pk, self.owner.pk])
 
     def test_worker_checks_automatic_switch_and_manual_recipient_again_before_delivery(self):
         self.now.return_value = datetime.fromisoformat('2026-10-17T00:00:00+03:00')
         schedules.publish_due_schedules()
-        self.config.automatic_enabled = False
-        self.config.save()
+        for user in (self.owner, self.manager):
+            NotificationPreferences.objects.create(user=user, telegram={'schedule': False})
         send = Mock()
         while deliver_one(send):
             pass

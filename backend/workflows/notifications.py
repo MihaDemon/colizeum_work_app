@@ -11,7 +11,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from .models import ScheduleSettings, TelegramNotification
+from .models import TelegramNotification
 from .notification_settings import telegram_enabled
 
 MOSCOW = ZoneInfo('Europe/Moscow')
@@ -135,9 +135,6 @@ def deliver_one(send=telegram_send):
                        and job.schedule_delivery.source == 'manual')
     if manual_schedule and job.schedule_delivery.author_id != job.recipient_id:
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Ручная отправка доступна только её отправителю.')
-        return True
-    if job.kind == 'schedule' and not manual_schedule and ScheduleSettings.objects.filter(pk=1, automatic_enabled=False).exists():
-        TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='skipped', last_error='Автоматическая отправка графиков выключена.')
         return True
     if not manual_schedule and not telegram_enabled(job.recipient, job.kind):
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='skipped', last_error='Уведомление отключено получателем.')
