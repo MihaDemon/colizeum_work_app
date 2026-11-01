@@ -170,7 +170,7 @@ class ScheduleTests(APITestCase):
     def test_night_stays_with_opening_day_and_has_correction_day(self):
         self.clock.return_value = datetime.fromisoformat('2026-10-15T22:00:00+03:00')
         self.client.force_authenticate(self.admins[0])
-        pk = self.client.post('/api/shifts/open/', {'shift_type': 'night'}).data['id']
+        pk = self.client.post('/api/shifts/open/', {'shift_type': 'night', 'schedule_date': '2026-10-15'}).data['id']
         self.clock.return_value = datetime.fromisoformat('2026-10-16T10:00:00+03:00')
         self.client.post(f'/api/shifts/{pk}/close/', {'cash': 0, 'cards': 0, 'sbp': 0})
         self.client.force_authenticate(self.manager)

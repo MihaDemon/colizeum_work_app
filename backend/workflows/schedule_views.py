@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from . import schedules
 from .commands import idempotent_command
-from .models import SchedulePeriod
+from .models import ScheduleContent, SchedulePeriod
 
 
 class Slot(serializers.Serializer):
@@ -34,7 +34,13 @@ class Restore(Version):
 
 
 class Settings(Version):
-    default_admin = serializers.IntegerField(min_value=1, allow_null=True)
+    default_admin = serializers.IntegerField(min_value=1, allow_null=True, required=False)
+    automatic_content = serializers.ChoiceField(choices=ScheduleContent.choices, required=False)
+    manual_content = serializers.ChoiceField(choices=ScheduleContent.choices, required=False)
+
+
+class Send(serializers.Serializer):
+    revision = serializers.IntegerField(min_value=1)
 
 
 def validated(cls, request):
@@ -77,6 +83,13 @@ def restore(request, pk):
 @idempotent_command
 def settings(request):
     return Response(schedules.configure(request.user, validated(Settings, request)))
+
+
+@api_view(['POST'])
+@idempotent_command
+def send(request, pk):
+    from .schedule_delivery import send_schedule
+    return Response(send_schedule(request.user, get_object_or_404(SchedulePeriod, pk=pk), validated(Send, request)), status=202)
 
 
 @api_view(['GET'])

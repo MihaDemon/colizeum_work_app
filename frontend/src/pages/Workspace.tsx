@@ -230,6 +230,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const [historyTab, setHistoryTab] = useState("shifts");
   const [taskScope, setTaskScope] = useState<"mine" | "assigned">("mine");
   const [dirty, setDirty] = useState(false);
+  const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
   const user = workspace.user;
   const isManager = user.role !== "admin";
   const ownsShift = user.role === "admin" && state.shift?.adminId === user.id;
@@ -275,6 +276,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     )
       return;
     setView(target);
+    setScheduleSettingsOpen(false);
     setLinkedRecord(null);
     setForm(null);
     setSelectedTask(null);
@@ -293,9 +295,18 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     if (linkedRecord) setLinkedRecord(null);
     else if (form) setForm(null);
     else if (selectedTask) setSelectedTask(null);
+    else if (scheduleSettingsOpen) setScheduleSettingsOpen(false);
     else navigate("more");
     window.scrollTo({ top: 0 });
-  }, [dirty, busy, linkedRecord, form, selectedTask, navigate]);
+  }, [
+    dirty,
+    busy,
+    linkedRecord,
+    form,
+    selectedTask,
+    scheduleSettingsOpen,
+    navigate,
+  ]);
   const openShiftHistory = () => {
     setHistoryTab("shifts");
     navigate("history");
@@ -826,6 +837,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
               {view === "schedule" && (
                 <SchedulePage
                   user={user}
+                  settingsOpen={scheduleSettingsOpen}
+                  onSettingsOpenChange={setScheduleSettingsOpen}
                   initialId={scheduleId}
                   onBack={back}
                   onDirty={setDirty}
@@ -947,7 +960,10 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           <summary>
                             <span>
                               <strong>
-                                {dateLabel(shift.openedAt)} ·{" "}
+                                {dateLabel(
+                                  shift.scheduleDate || shift.openedAt,
+                                )}{" "}
+                                ·{" "}
                                 {shift.type === "day"
                                   ? "Дневная смена"
                                   : "Ночная смена"}
@@ -1471,6 +1487,13 @@ function WorkflowForm({
   const [error, setError] = useState("");
   const { person, people } = usePeople();
   const [shiftType, setShiftType] = useState<"day" | "night">("day");
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState("");
+  const automaticScheduleDate =
+    shiftType === "day"
+      ? state.shiftOpening?.today
+      : state.shiftOpening?.nightDate;
+  const needsScheduleDate = shiftType === "night" && !automaticScheduleDate;
+  const openingScheduleDate = automaticScheduleDate || selectedScheduleDate;
   const [cash, setCash] = useState("");
   const [cards, setCards] = useState("");
   const [sbp, setSbp] = useState("");
@@ -1517,8 +1540,25 @@ function WorkflowForm({
         setError("Другая смена ещё открыта. Дождитесь её закрытия.");
         return;
       }
+      if (needsScheduleDate && !selectedScheduleDate) {
+        setError("Укажите дату ночной смены по графику.");
+        return;
+      }
+      if (
+        needsScheduleDate &&
+        state.shiftOpening &&
+        selectedScheduleDate > state.shiftOpening.today
+      ) {
+        setError("Дата смены по графику не может быть в будущем.");
+        return;
+      }
       onSave(
-        { type: "OPEN_SHIFT", actorId: user.id, shiftType },
+        {
+          type: "OPEN_SHIFT",
+          actorId: user.id,
+          shiftType,
+          scheduleDate: openingScheduleDate || undefined,
+        },
         "Ваша смена открыта. Можно приступать к работе.",
       );
     } else if (kind === "expense") {
@@ -1702,9 +1742,42 @@ function WorkflowForm({
                   ))}
                 </fieldset>
               )}
+              {kind === "open" &&
+                (needsScheduleDate ? (
+                  <label className="cp-field">
+                    Дата по графику <span className="cp-required">*</span>
+                    <input
+                      type="date"
+                      aria-label="Дата по графику"
+                      aria-describedby="schedule-date-hint"
+                      required
+                      max={state.shiftOpening?.today}
+                      value={selectedScheduleDate}
+                      onChange={(event) => {
+                        setSelectedScheduleDate(event.target.value);
+                        setError("");
+                      }}
+                    />
+                    <small className="cp-field-hint" id="schedule-date-hint">
+                      Нет недавней дневной смены. Выберите дату, к которой
+                      относится ночная смена по графику.
+                    </small>
+                  </label>
+                ) : openingScheduleDate ? (
+                  <p className="cp-field-hint">
+                    Дата по графику: {dateLabel(openingScheduleDate)}
+                    {shiftType === "night" && " — по предыдущей дневной смене."}
+                  </p>
+                ) : null)}
               <div className="cp-form-info">
                 <span>{user.name}</span>
-                <span>{dateLabel(new Date().toISOString())}</span>
+                <span>
+                  {dateLabel(
+                    (kind === "close"
+                      ? state.shift?.scheduleDate
+                      : openingScheduleDate) || new Date().toISOString(),
+                  )}
+                </span>
               </div>
             </>
           )}

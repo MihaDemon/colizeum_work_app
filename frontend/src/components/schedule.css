@@ -100,3 +100,9 @@
 :root[data-theme="light"] .schedule-grid .schedule-actual small {
   color: #665500;
 }
+.schedule-sending .cp-form-panel h2 {
+  margin: 28px 0 12px;
+}
+.schedule-sending .cp-form-panel h2:first-child {
+  margin-top: 0;
+}

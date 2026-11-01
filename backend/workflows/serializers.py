@@ -40,6 +40,7 @@ class PhotoField(serializers.ImageField):
 
 class OpenShiftSerializer(serializers.Serializer):
     shift_type = serializers.ChoiceField(choices=['day', 'night'])
+    schedule_date = serializers.DateField(required=False)
 
 
 class PhotoUploadSerializer(serializers.Serializer):

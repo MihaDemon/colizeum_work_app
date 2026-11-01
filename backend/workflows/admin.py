@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import Activity, CleanerVisit, NotificationPreferences, PhotoSettings, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
+from .models import Activity, CleanerVisit, NotificationPreferences, PhotoSettings, ScheduleDelivery, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 from .forms import WorkflowForm
 
 
@@ -22,8 +22,11 @@ class WorkflowAdmin(admin.ModelAdmin):
 
 @admin.register(Shift)
 class ShiftAdmin(WorkflowAdmin):
-    list_display = ['id', 'admin', 'shift_type', 'opened_at', 'closed_at', 'report']
-    list_filter = ['shift_type', 'admin']
+    list_display = ['id', 'admin', 'shift_type', 'schedule_date', 'opened_at', 'closed_at', 'report']
+    list_filter = ['shift_type', 'admin', 'schedule_date']
+
+    def get_readonly_fields(self, request, obj=None):
+        return (*super().get_readonly_fields(request, obj), 'schedule_date') if obj else super().get_readonly_fields(request, obj)
 
 
 @admin.register(Task)
@@ -60,6 +63,7 @@ class CleanerVisitAdmin(WorkflowAdmin):
 
 admin.site.register(SchedulePeriod, WorkflowAdmin)
 admin.site.register(ScheduleRevision, WorkflowAdmin)
+admin.site.register(ScheduleDelivery, WorkflowAdmin)
 
 
 @admin.register(ScheduleSettings)

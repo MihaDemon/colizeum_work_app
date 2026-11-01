@@ -10,6 +10,7 @@ from .models import Activity, CleanerVisit, PhotoSettings, Shift, ShiftExpense, 
 from .permissions import person, role
 from .notifications import MOSCOW, queue_management, queue_task_assigned
 from .photos import uploaded_photos, validate_photos
+from .scheduling import resolve_schedule_date
 
 
 class Conflict(APIException):
@@ -45,6 +46,8 @@ def open_shift(user, data):
         raise PermissionDenied('Открывать смены могут только администраторы.')
     if Shift.objects.filter(closed_at__isnull=True).exists():
         raise Conflict('Предыдущая смена ещё открыта.')
+    data = dict(data)
+    data['schedule_date'] = resolve_schedule_date(data['shift_type'], data.get('schedule_date'))
     settings, _ = PhotoSettings.objects.get_or_create(pk=1)
     shift = Shift.objects.create(admin=user, photo_requirements=settings.report_fields, **data)
     from .schedules import bind_shift
@@ -68,7 +71,7 @@ def close_shift(user, pk, data):
     ])
     validate_photos(photos, 'named', shift.photo_requirements)
     report = Report.objects.create(
-        admin=user, shift=shift.shift_type, date=timezone.localdate(),
+        admin=user, shift=shift.shift_type, date=shift.schedule_date,
         cash=data['cash'], cards=data['cards'], spb=data['sbp'],
     )
     for item in photos:

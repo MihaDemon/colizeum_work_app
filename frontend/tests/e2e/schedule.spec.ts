@@ -65,7 +65,18 @@ async function setup(
       { plan, number: 1, source: "initial", restoredFrom: null },
     ]);
   }
-  let config = { defaultAdminId: null as string | null, version: 1 };
+  let config = {
+    defaultAdminId: null as string | null,
+    version: 1,
+    automaticContent: "both",
+    manualContent: "both",
+  };
+  const sends: {
+    periodId: string;
+    revision: number;
+    content: string;
+    recipient: string;
+  }[] = [];
   const detail = (id: string, version?: string | null) => {
     const list = versions.get(id)!;
     const selected = version
@@ -183,10 +194,43 @@ async function setup(
     if (path === "/api/schedules/settings/") {
       const data = route.request().postDataJSON();
       config = {
-        defaultAdminId: data.default_admin ? String(data.default_admin) : null,
+        ...config,
+        ...(Object.hasOwn(data, "default_admin")
+          ? {
+              defaultAdminId: data.default_admin
+                ? String(data.default_admin)
+                : null,
+            }
+          : {}),
+        ...(data.automatic_content
+          ? { automaticContent: data.automatic_content }
+          : {}),
+        ...(data.manual_content ? { manualContent: data.manual_content } : {}),
         version: config.version + 1,
       };
       return route.fulfill({ json: config });
+    }
+    const send = path.match(/^\/api\/schedules\/(\d+)\/send\/$/);
+    if (send) {
+      expect(method).toBe("POST");
+      expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+      const data = route.request().postDataJSON();
+      sends.push({
+        periodId: send[1],
+        revision: data.revision,
+        content: config.manualContent,
+        recipient: user.id,
+      });
+      return route.fulfill({
+        status: 202,
+        json: {
+          id: String(sends.length),
+          queued: 1,
+          skipped: 0,
+          content: config.manualContent,
+          revision: data.revision,
+        },
+      });
     }
     const match = path.match(
       /^\/api\/schedules\/(\d+)\/(generate\/|restore\/)?$/,
@@ -276,7 +320,7 @@ async function setup(
       });
     return route.fulfill({ json: [] });
   });
-  return { versions, admins };
+  return { versions, admins, sends };
 }
 
 async function openSchedule(page: Page) {
@@ -421,4 +465,106 @@ test("unsaved work is guarded and archive links open the requested period", asyn
   await expect(
     page.getByRole("button", { name: "Редактировать график" }),
   ).toHaveCount(0);
+});
+
+test("employees can send the current schedule and an archived revision to themselves", async ({
+  page,
+}, info) => {
+  const { sends } = await setup(page, "admin");
+  await openSchedule(page);
+  await expect(
+    page.getByRole("button", { name: "Настройки отправки", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Отправить себе в Telegram", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Бот отправит изображение вам в Telegram",
+  );
+  expect(sends).toEqual([
+    { periodId: "1", revision: 1, content: "both", recipient: "10" },
+  ]);
+  await page.getByRole("button", { name: "Архив", exact: true }).click();
+  await expect(page.locator(".schedule-period-title")).toContainText(
+    "16.09.2026",
+  );
+  await page.getByLabel("Версия графика").selectOption("1");
+  await expect(
+    page.getByText("План и факт · версия 1", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("send-archive-schedule.png"),
+    fullPage: false,
+  });
+  await page
+    .getByRole("button", { name: "Отправить себе в Telegram", exact: true })
+    .click();
+  expect(sends[1]).toEqual({
+    periodId: "3",
+    revision: 1,
+    content: "both",
+    recipient: "10",
+  });
+});
+
+test("owner configures manual and automatic content independently and keeps it after reload", async ({
+  page,
+}, info) => {
+  const { sends } = await setup(page, "superuser");
+  await openSchedule(page);
+  await page
+    .getByRole("button", { name: "Настройки отправки", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Отправка графиков" }),
+  ).toBeVisible();
+  await page.getByLabel("Содержание ручной отправки").selectOption("plan");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.evaluate(() =>
+    (window as unknown as { testBack: () => void }).testBack(),
+  );
+  await expect(
+    page.getByRole("heading", { name: "Отправка графиков" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Содержание автоматической отправки")
+    .selectOption("actual");
+  await page
+    .getByRole("button", { name: "Сохранить настройки отправки", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Настройки отправки сохранены",
+  );
+  await page.screenshot({
+    path: info.outputPath("schedule-send-settings.png"),
+    fullPage: true,
+  });
+  await expect(page.getByLabel("Отправлять автоматически")).toHaveCount(0);
+  await expect(page.getByText(/Уведомления → Итоговый график/)).toBeVisible();
+  await page.evaluate(() =>
+    (window as unknown as { testBack: () => void }).testBack(),
+  );
+  await expect(
+    page.getByText(/После этого срока отправляется автоматически: только факт/),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Только план · версия 1", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Отправить себе в Telegram", exact: true })
+    .click();
+  expect(sends[0].content).toBe("plan");
+  await page.reload();
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: "График смен", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Настройки отправки", exact: true })
+    .click();
+  await expect(page.getByLabel("Содержание ручной отправки")).toHaveValue(
+    "plan",
+  );
+  await expect(
+    page.getByLabel("Содержание автоматической отправки"),
+  ).toHaveValue("actual");
+  await expect(page.getByLabel("Отправлять автоматически")).toHaveCount(0);
 });

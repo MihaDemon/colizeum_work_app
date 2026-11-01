@@ -778,6 +778,8 @@ async function setup(
     theme?: string;
     failure?: boolean;
     noShift?: boolean;
+    nightDate?: string;
+    lateNightHistory?: boolean;
     contactShared?: boolean;
     owner?: boolean;
     deletedManager?: boolean;
@@ -996,6 +998,10 @@ async function setup(
                   : []),
               ],
               state: {
+                shiftOpening: {
+                  today: "2026-11-01",
+                  nightDate: options.nightDate || null,
+                },
                 photoSettings,
                 shift: active
                   ? {
@@ -1021,7 +1027,21 @@ async function setup(
                       },
                     ]
                   : [],
-                shifts: [],
+                shifts: options.lateNightHistory
+                  ? [
+                      {
+                        id: "late-night",
+                        adminId: "1",
+                        type: "night",
+                        scheduleDate: "2026-10-31",
+                        openedAt: "2026-11-01T00:32:00+03:00",
+                        closedAt: "2026-11-01T10:00:00+03:00",
+                        cash: 100,
+                        cards: 200,
+                        sbp: 300,
+                      },
+                    ]
+                  : [],
                 tasks: taskRemoved
                   ? []
                   : [
@@ -1319,6 +1339,94 @@ test("equipment categories, rows and details use their matching device icons", a
   });
 });
 
+test("night handover inherits the day date without asking for a date", async ({
+  page,
+}, info) => {
+  await setup(page, { noShift: true, nightDate: "2026-10-31" });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  await page.getByRole("radio", { name: /Ночная смена/ }).check();
+  await expect(page.getByLabel("Дата по графику", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/Дата по графику: 31 окт/)).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("night-handover.png"),
+    fullPage: true,
+  });
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith("/api/shifts/open/") && r.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  expect((await sent).postData()).toContain(
+    'name="schedule_date"\r\n\r\n2026-10-31',
+  );
+});
+
+test("night opening without a day handover requires a date and rejects the future", async ({
+  page,
+}, info) => {
+  await setup(page, { noShift: true });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  await page.getByRole("radio", { name: /Ночная смена/ }).check();
+  const date = page.getByLabel("Дата по графику", { exact: true });
+  await expect(date).toHaveValue("");
+  let requests = 0;
+  page.on("request", (r) => {
+    if (r.url().endsWith("/api/shifts/open/")) requests += 1;
+  });
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Укажите дату ночной смены",
+  );
+  await date.fill("2026-11-02");
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "не может быть в будущем",
+  );
+  expect(requests).toBe(0);
+  await date.fill("2026-10-31");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("night-date-selection.png"),
+    fullPage: true,
+  });
+  const sent = page.waitForRequest(
+    (r) => r.url().endsWith("/api/shifts/open/") && r.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Открыть смену", exact: true })
+    .click();
+  expect((await sent).postData()).toContain(
+    'name="schedule_date"\r\n\r\n2026-10-31',
+  );
+});
+
+test("late night history uses the schedule date and keeps real handover times", async ({
+  page,
+}) => {
+  await setup(page, { lateNightHistory: true });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: "История смен/задач", exact: true }).click();
+  const row = page.locator(".cp-history-row");
+  await expect(row.locator("summary strong").first()).toHaveText(
+    "31 окт. · Ночная смена",
+  );
+  await expect(row).toContainText("00:32 – 10:00");
+});
+
 test("shift opening and closing use real endpoints and fixed opening type", async ({
   page,
 }) => {
@@ -1328,13 +1436,16 @@ test("shift opening and closing use real endpoints and fixed opening type", asyn
     .getByRole("button", { name: "Открыть смену", exact: true })
     .click();
   await page.getByRole("radio", { name: /Ночная смена/ }).check();
+  await page.getByLabel("Дата по графику", { exact: true }).fill("2026-10-31");
   const opened = page.waitForRequest(
     (r) => r.url().endsWith("/api/shifts/open/") && r.method() === "POST",
   );
   await page
     .getByRole("button", { name: "Открыть смену", exact: true })
     .click();
-  expect((await opened).postData()).toContain('name="shift_type"');
+  const openingBody = (await opened).postData();
+  expect(openingBody).toContain('name="shift_type"');
+  expect(openingBody).toContain('name="schedule_date"\r\n\r\n2026-10-31');
   await page
     .getByRole("button", { name: "Закрыть смену", exact: true })
     .click();
