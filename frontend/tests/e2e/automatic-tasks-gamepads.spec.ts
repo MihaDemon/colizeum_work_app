@@ -69,9 +69,16 @@ async function setup(page: Page, role: "manager" | "admin" = "manager") {
     },
   ];
   const saves: unknown[] = [];
+  const failures = { toggle: 0, delete: 0 };
   await page.addInitScript(() => {
-    let back = () => {};
-    Object.defineProperty(window, "testBack", { value: () => back() });
+    let back: (() => void) | null = null;
+    const native = {
+      backVisible: false,
+      headerColor: "",
+      events: {} as Record<string, () => void>,
+    };
+    Object.defineProperty(window, "testNative", { value: native });
+    Object.defineProperty(window, "testBack", { value: () => back?.() });
     Object.defineProperty(window, "Telegram", {
       value: {
         WebApp: {
@@ -82,20 +89,32 @@ async function setup(page: Page, role: "manager" | "admin" = "manager") {
           ready() {},
           expand() {},
           isVersionAtLeast: () => true,
-          setHeaderColor() {},
+          setHeaderColor(color: string) {
+            native.headerColor = color;
+          },
           setBackgroundColor() {},
           setBottomBarColor() {},
           enableClosingConfirmation() {},
           disableClosingConfirmation() {},
-          onEvent() {},
-          offEvent() {},
+          onEvent(event: string, callback: () => void) {
+            native.events[event] = callback;
+          },
+          offEvent(event: string, callback: () => void) {
+            if (native.events[event] === callback) delete native.events[event];
+          },
           BackButton: {
-            show() {},
-            hide() {},
+            show() {
+              native.backVisible = true;
+            },
+            hide() {
+              native.backVisible = false;
+            },
             onClick(fn: () => void) {
               back = fn;
             },
-            offClick() {},
+            offClick(fn: () => void) {
+              if (back === fn) back = null;
+            },
           },
           HapticFeedback: { notificationOccurred() {}, selectionChanged() {} },
         },
@@ -155,6 +174,28 @@ async function setup(page: Page, role: "manager" | "admin" = "manager") {
       const old = templates.find(
         (item) => String(item.id) === path.split("/")[3],
       );
+      if (method === "PATCH" || method === "DELETE") {
+        const data = route.request().postDataJSON();
+        expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+        expect(data.version).toBe(old?.version);
+        const failure = method === "PATCH" ? "toggle" : "delete";
+        if (failures[failure] > 0) {
+          failures[failure]--;
+          return route.fulfill({
+            status: 503,
+            json: { detail: "Не удалось сохранить. Повторите попытку." },
+          });
+        }
+        if (method === "PATCH") {
+          Object.assign(old!, {
+            enabled: data.enabled,
+            version: Number(old!.version) + 1,
+          });
+          return route.fulfill({ json: old });
+        }
+        templates.splice(templates.indexOf(old!), 1);
+        return route.fulfill({ json: { deleted: true } });
+      }
       const data = {
         id: old?.id || String(templates.length + 1),
         title: field("title"),
@@ -204,7 +245,7 @@ async function setup(page: Page, role: "manager" | "admin" = "manager") {
       });
     return route.fulfill({ json: [] });
   });
-  return { templates, tasks, saves };
+  return { templates, tasks, saves, failures };
 }
 
 test("automatic task templates can be configured by shift and disabled for future shifts", async ({
@@ -245,16 +286,154 @@ test("automatic task templates can be configured by shift and disabled for futur
   ).toBeVisible();
   expect(server.templates[0].shiftType).toBe("night");
   expect(server.templates[0].photoMode).toBe("named");
+  const toggle = page.getByRole("switch", {
+    name: "Создавать автоматически: Проверить уборку",
+    exact: true,
+  });
+  await expect(toggle).toBeChecked();
+  server.failures.toggle = 1;
+  await toggle.click();
+  await expect(page.getByRole("alert")).toContainText("Не удалось сохранить");
+  await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
+  await expect(page.getByText("Выключена", { exact: true })).toBeVisible();
+  expect(server.templates[0].shiftType).toBe("night");
+  expect(server.templates[0].photoMode).toBe("named");
   await page
     .getByRole("button", { name: "Изменить: Проверить уборку", exact: true })
     .click();
-  await page.getByLabel("Создавать автоматически", { exact: true }).uncheck();
+  await page
+    .getByLabel("Инструкции автоматической задачи")
+    .fill("Новое описание.");
   await page
     .getByRole("button", { name: "Сохранить автозадачу", exact: true })
     .click();
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  const switchBox = await toggle.boundingBox();
+  expect(switchBox!.width).toBe(44);
+  expect(switchBox!.height).toBe(26);
+  await page.screenshot({
+    path: info.outputPath("automatic-tasks-list.png"),
+    fullPage: true,
+  });
+  const create = await page
+    .getByRole("button", { name: "Создать автозадачу", exact: true })
+    .boundingBox();
+  const content = await page.locator(".cp-content").boundingBox();
+  expect(create!.x).toBeGreaterThanOrEqual(content!.x);
+  expect(create!.x + create!.width).toBeLessThanOrEqual(
+    content!.x + content!.width,
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("template deletion can be cancelled and retried without removing issued tasks", async ({
+  page,
+}) => {
+  const server = await setup(page);
+  server.templates.push({
+    id: "1",
+    title: "Проверить игровые места",
+    description: "Все места",
+    shiftType: "both",
+    enabled: true,
+    priority: "normal",
+    photoMode: "optional",
+    photoRequirements: [],
+    referencePhoto: null,
+    version: 1,
+    creatorName: "Управляющий",
+    canEdit: true,
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Автоматические задачи", exact: true })
+    .click();
+  const remove = page.getByRole("button", {
+    name: "Удалить: Проверить игровые места",
+    exact: true,
+  });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await remove.click();
+  await expect(remove).toBeVisible();
+  expect(server.templates).toHaveLength(1);
+  server.failures.delete = 1;
+  page.once("dialog", (dialog) => dialog.accept());
+  await remove.click();
+  await expect(page.getByRole("alert")).toContainText("Не удалось сохранить");
+  await expect(remove).toBeEnabled();
+  page.once("dialog", (dialog) => dialog.accept());
+  await remove.click();
   await expect(
-    page.getByText("Ночная смена · Выключена", { exact: true }),
+    page.getByRole("heading", { name: "Автоматических задач пока нет" }),
   ).toBeVisible();
+  expect(server.templates).toHaveLength(0);
+  expect(server.tasks).toHaveLength(1);
+});
+
+test("Telegram back returns from the template editor to the list then More and restores header on resume", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/");
+  const native = () =>
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            testNative: { backVisible: boolean; headerColor: string };
+          }
+        ).testNative,
+    );
+  await expect.poll(async () => (await native()).backVisible).toBe(false);
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Автоматические задачи", exact: true })
+    .click();
+  await expect.poll(async () => (await native()).backVisible).toBe(true);
+  await page
+    .getByRole("button", { name: "Создать автозадачу", exact: true })
+    .click();
+  await page.getByLabel("Название автоматической задачи").fill("Черновик");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.evaluate(() =>
+    (window as unknown as { testBack: () => void }).testBack(),
+  );
+  await expect(page.getByLabel("Название автоматической задачи")).toHaveValue(
+    "Черновик",
+  );
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.evaluate(() =>
+    (window as unknown as { testBack: () => void }).testBack(),
+  );
+  await expect(
+    page.getByRole("button", { name: "Создать автозадачу", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (window as unknown as { testBack: () => void }).testBack(),
+  );
+  await expect(
+    page.getByRole("heading", { name: "Ещё", exact: true }),
+  ).toBeVisible();
+  await expect.poll(async () => (await native()).backVisible).toBe(false);
+  await page.evaluate(() => {
+    const native = (
+      window as unknown as {
+        testNative: { headerColor: string; events: Record<string, () => void> };
+      }
+    ).testNative;
+    native.headerColor = "#888888";
+    native.events.activated();
+  });
+  expect((await native()).headerColor).toBe("#090a0d");
 });
 
 test("required tasks block shift closing until sent to moderation and block again after rejection", async ({

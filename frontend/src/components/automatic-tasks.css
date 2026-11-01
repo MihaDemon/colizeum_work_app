@@ -1,15 +1,133 @@
+.automatic-tasks {
+  min-width: 0;
+}
+.automatic-tasks .cp-page-heading {
+  display: block;
+  margin-bottom: 12px;
+}
+.automatic-tasks .cp-page-heading h1 {
+  overflow-wrap: anywhere;
+}
+.automatic-tasks-intro {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.automatic-tasks-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding-block: 24px;
+}
+.automatic-tasks-toolbar .cp-button {
+  max-width: 100%;
+  white-space: normal;
+}
+.automatic-tasks-toolbar .cp-field-hint {
+  margin: 0;
+}
+.automatic-tasks-notice {
+  padding-block: 12px;
+  font-size: 13px;
+}
 .automatic-template {
-  padding-block: 20px;
-  border-bottom: 1px solid var(--cp-line);
+  min-width: 0;
+  padding-block: 24px;
+  border-top: 1px solid var(--cp-line);
+}
+.automatic-template-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 .automatic-template h2 {
-  font-size: 17px;
+  min-width: 0;
+  font-size: 18px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
+}
+.automatic-template-state {
+  flex-shrink: 0;
+  padding-top: 4px;
+  color: var(--cp-muted);
+  font-size: 12px;
+}
+.automatic-template-state.is-enabled {
+  color: var(--cp-text);
 }
 .automatic-template > p {
   margin-top: 12px;
 }
-.automatic-task-toggle,
+.automatic-template .automatic-template-meta {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.automatic-template .cp-description {
+  font-size: 14px;
+}
+.automatic-template-controls {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.automatic-template-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.automatic-template-switch input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 26px;
+  min-height: 26px;
+  flex: 0 0 44px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--cp-muted);
+  border-radius: 16px;
+  background: var(--cp-panel);
+  cursor: pointer;
+}
+.automatic-template-switch input::before {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cp-muted);
+}
+.automatic-template-switch input:checked {
+  background: var(--cp-accent);
+  border-color: var(--cp-accent);
+}
+.automatic-template-switch input:checked::before {
+  transform: translateX(18px);
+  background: #090a0d;
+}
+.automatic-template-switch input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.automatic-template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.automatic-template-actions .cp-button {
+  min-height: 44px;
+  flex: 1 1 auto;
+}
+.automatic-template-actions .automatic-template-delete {
+  color: var(--danger);
+}
 .gamepad-choice {
   display: flex;
   flex-direction: row;
@@ -20,7 +138,6 @@
   min-height: 48px;
   margin-block: 16px;
 }
-.automatic-task-toggle input,
 .gamepad-choice input {
   width: 22px;
   height: 22px;

@@ -156,3 +156,62 @@ class AutomaticTaskTests(APITestCase):
         self.assertEqual(self.client.get(url).status_code, 403)
         task = Task.objects.get(required_for_shift=shift)
         self.assertEqual(self.client.get(f'/api/files/reference/{task.pk}/').status_code, 200)
+
+    def test_list_toggle_preserves_configuration_and_checks_permissions_and_version(self):
+        fields = [{'id': 'desk', 'label': 'Чистый стол', 'required': True}]
+        template = self.template(photo_mode='named', photo_requirements=fields, shift_type='night', priority='high')
+        url = f'/api/automatic-tasks/{template.pk}/'
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.patch(url, {'enabled': False, 'version': 1}, format='json').status_code, 403)
+        self.client.force_authenticate(self.other)
+        self.assertEqual(self.client.patch(url, {'enabled': False, 'version': 1}, format='json').status_code, 403)
+        self.client.force_authenticate(self.manager)
+        self.assertEqual(self.client.patch(url, {'enabled': False}, format='json').status_code, 400)
+        response = self.client.patch(url, {'enabled': False, 'version': 1}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        template.refresh_from_db()
+        self.assertFalse(template.enabled)
+        self.assertEqual(template.photo_requirements, fields)
+        self.assertEqual(template.photo_mode, 'named')
+        self.assertEqual(template.shift_type, 'night')
+        self.assertEqual(template.priority, 'high')
+        self.assertEqual(self.client.patch(url, {'enabled': True, 'version': 1}, format='json').status_code, 409)
+        self.client.force_authenticate(self.owner)
+        self.assertEqual(self.client.patch(url, {'enabled': True, 'version': 2}, format='json').status_code, 200)
+
+    def test_deleting_template_preserves_required_task_and_stops_future_assignments(self):
+        template = self.template()
+        shift = self.open()
+        task = Task.objects.get(required_for_shift=shift)
+        url = f'/api/automatic-tasks/{template.pk}/'
+        self.client.force_authenticate(self.manager)
+        key = str(uuid.uuid4())
+        response = self.client.delete(url, {'version': 1}, format='json', HTTP_IDEMPOTENCY_KEY=key)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.client.delete(url, {'version': 1}, format='json', HTTP_IDEMPOTENCY_KEY=key).status_code, 200)
+        template.refresh_from_db()
+        self.assertIsNotNone(template.deleted_at)
+        self.assertFalse(template.enabled)
+        self.assertEqual(self.client.get('/api/automatic-tasks/').data, [])
+        self.assertEqual(self.client.patch(url, {'enabled': True, 'version': 2}, format='json').status_code, 404)
+        task.refresh_from_db()
+        self.assertEqual(task.automatic_template_id, template.pk)
+        self.assertEqual(task.status, Task.Status.ACTIVE)
+        self.assertEqual(self.close(shift).status_code, 409)
+        self.assertEqual(self.submit(task).status_code, 200)
+        self.client.force_authenticate(self.manager)
+        self.assertEqual(self.client.post(f'/api/tasks/{task.pk}/review/', {'accept': True, 'version': 1}).status_code, 200)
+        self.assertEqual(self.close(shift).status_code, 200)
+        next_shift = self.open('night')
+        self.assertFalse(Task.objects.filter(required_for_shift=next_shift).exists())
+
+    def test_template_deletion_requires_owner_and_current_version(self):
+        template = self.template()
+        url = f'/api/automatic-tasks/{template.pk}/'
+        for user in [self.admin, self.other]:
+            self.client.force_authenticate(user)
+            self.assertEqual(self.client.delete(url, {'version': 1}, format='json').status_code, 403)
+        self.client.force_authenticate(self.owner)
+        self.assertEqual(self.client.delete(url, {}, format='json').status_code, 400)
+        self.assertEqual(self.client.delete(url, {'version': 2}, format='json').status_code, 409)
+        self.assertEqual(self.client.delete(url, {'version': 1}, format='json').status_code, 200)

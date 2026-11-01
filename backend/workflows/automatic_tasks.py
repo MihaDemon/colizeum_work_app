@@ -3,6 +3,8 @@ from copy import deepcopy
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import PermissionDenied
@@ -21,6 +23,15 @@ class TemplateSerializer(CreateTaskSerializer):
     enabled = serializers.BooleanField(default=True)
     version = serializers.IntegerField(min_value=1, required=False)
     clear_reference_photo = serializers.BooleanField(default=False)
+
+
+class TemplateToggleSerializer(serializers.Serializer):
+    enabled = serializers.BooleanField()
+    version = serializers.IntegerField(min_value=1)
+
+
+class TemplateDeleteSerializer(serializers.Serializer):
+    version = serializers.IntegerField(min_value=1)
 
 
 def management(user):
@@ -50,7 +61,7 @@ def save_template(user, data, pk=None):
     if pk is None:
         template = AutomaticTaskTemplate.objects.create(creator=user, **values)
     else:
-        template = AutomaticTaskTemplate.objects.get(pk=pk)
+        template = get_object_or_404(AutomaticTaskTemplate, pk=pk, deleted_at__isnull=True)
         if not (user.is_superuser or template.creator_id == user.pk):
             raise PermissionDenied('Изменить автоматическую задачу может её постановщик или суперпользователь.')
         if version != template.version:
@@ -63,6 +74,23 @@ def save_template(user, data, pk=None):
     return template
 
 
+@transaction.atomic
+def delete_template(user, pk, version):
+    from .services import Conflict, event, lock_register
+    management(user)
+    lock_register(user)
+    template = get_object_or_404(AutomaticTaskTemplate, pk=pk, deleted_at__isnull=True)
+    if not (user.is_superuser or template.creator_id == user.pk):
+        raise PermissionDenied('Удалить автоматическую задачу может её постановщик или суперпользователь.')
+    if version != template.version:
+        raise Conflict('Автоматическая задача изменилась. Обновите список и повторите удаление.')
+    template.deleted_at = timezone.now()
+    template.enabled = False
+    template.version += 1
+    template.save(update_fields=['deleted_at', 'enabled', 'version'])
+    event(user, 'Автоматическая задача удалена', template.title, kind='task')
+
+
 @api_view(['GET', 'POST'])
 @idempotent_command
 def templates(request):
@@ -72,16 +100,21 @@ def templates(request):
         serializer.is_valid(raise_exception=True)
         template = save_template(request.user, serializer.validated_data)
         return Response(template_data(template, request.user), status=201)
-    return Response([template_data(t, request.user) for t in AutomaticTaskTemplate.objects.select_related('creator__phone_number')])
+    return Response([template_data(t, request.user) for t in AutomaticTaskTemplate.objects.filter(deleted_at__isnull=True).select_related('creator__phone_number')])
 
 
-@api_view(['POST'])
+@api_view(['POST', 'PATCH', 'DELETE'])
 @idempotent_command
 def template_detail(request, pk):
     management(request.user)
-    from django.shortcuts import get_object_or_404
-    get_object_or_404(AutomaticTaskTemplate, pk=pk)
-    serializer = TemplateSerializer(data=request.data)
+    if request.method == 'DELETE':
+        serializer = TemplateDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        delete_template(request.user, pk, serializer.validated_data['version'])
+        return Response({'id': str(pk), 'deleted': True})
+    get_object_or_404(AutomaticTaskTemplate, pk=pk, deleted_at__isnull=True)
+    serializer_class = TemplateToggleSerializer if request.method == 'PATCH' else TemplateSerializer
+    serializer = serializer_class(data=request.data)
     serializer.is_valid(raise_exception=True)
     return Response(template_data(save_template(request.user, serializer.validated_data, pk), request.user))
 
@@ -89,7 +122,7 @@ def template_detail(request, pk):
 def create_shift_tasks(shift):
     from .notifications import queue_task_assigned
     from .services import event
-    templates = AutomaticTaskTemplate.objects.filter(enabled=True).filter(Q(shift_type='both') | Q(shift_type=shift.shift_type)).select_related('creator')
+    templates = AutomaticTaskTemplate.objects.filter(enabled=True, deleted_at__isnull=True).filter(Q(shift_type='both') | Q(shift_type=shift.shift_type)).select_related('creator')
     owner = None
     for template in templates:
         creator = template.creator

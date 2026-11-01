@@ -78,6 +78,7 @@ export function initializeTelegram(): () => void {
   app.expand();
   sync();
   const events = ["themeChanged", "safeAreaChanged", "contentSafeAreaChanged"];
+  if (app.isVersionAtLeast("8.0")) events.push("activated", "fullscreenChanged");
   events.forEach((event) => app.onEvent(event, sync));
   return () => events.forEach((event) => app.offEvent(event, sync));
 }

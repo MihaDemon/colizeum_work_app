@@ -76,6 +76,7 @@ class Task(UserHistory):
 
 
 class AutomaticTaskTemplate(UserHistory):
+    deleted_at = models.DateTimeField(null=True, blank=True, editable=False, verbose_name='Удалена')
     creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Постановщик')
     title = models.CharField(max_length=200, verbose_name='Название')
     description = models.TextField(blank=True, verbose_name='Описание')
