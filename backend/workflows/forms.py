@@ -1,7 +1,7 @@
 from django import forms
 from rest_framework.exceptions import ValidationError
 
-from .models import Task
+from .models import AutomaticTaskTemplate, Task
 from .serializers import PhotoRequirementsField
 
 
@@ -16,7 +16,7 @@ class WorkflowForm(forms.ModelForm):
                 cleaned[field] = PhotoRequirementsField().to_internal_value(value)
             except ValidationError:
                 self.add_error(field, 'Укажите список из не более 10 полей. Для каждого нужны уникальные id и label, а также признак required.')
-        if isinstance(self.instance, Task) and 'photo_requirements' in cleaned:
+        if isinstance(self.instance, (Task, AutomaticTaskTemplate)) and 'photo_requirements' in cleaned:
             fields, mode = cleaned['photo_requirements'], cleaned.get('photo_mode')
             if mode == 'named' and not fields:
                 self.add_error('photo_requirements', 'Добавьте хотя бы одно именованное поле для фото.')

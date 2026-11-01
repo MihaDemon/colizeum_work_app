@@ -32,6 +32,7 @@ export const resources: { key: Resource; title: string; singular: string }[] = [
   { key: "headsets", title: "Наушники", singular: "Наушники" },
   { key: "monitors", title: "Мониторы", singular: "Монитор" },
   { key: "playstations", title: "PlayStation", singular: "PlayStation" },
+  { key: "gamepads", title: "Геймпады", singular: "Геймпад" },
 ];
 const links = [
   ["mouse", "mice", "Мышь"],
@@ -57,7 +58,7 @@ export function lookupFromQr(text: string): {
 } {
   const url = new URL(text);
   const match = url.pathname.match(
-    /\/api\/(stations|pcs|mice|keyboards|headsets|monitors|playstations)\/lookup\/$/,
+    /\/api\/(stations|pcs|mice|keyboards|headsets|monitors|playstations|gamepads)\/lookup\/$/,
   );
   if (!match || !["https:", "http:"].includes(url.protocol))
     throw new Error(
@@ -193,7 +194,7 @@ export function Equipment({
                   });
               }}
             >
-              Устройство будет удалено из базы. Связи с компьютерными местами
+              Устройство будет удалено из базы. Связи с другими устройствами
               будут очищены.
             </Confirm>
           ) : null
@@ -340,18 +341,29 @@ function DeviceDetails({
   const [related, setRelated] = useState<Record<string, Device>>({});
   const [relatedError, setRelatedError] = useState("");
   useEffect(() => {
-    if (resource !== "stations") return;
+    const relations: [string, Resource, number][] = [];
+    if (resource === "stations")
+      links.forEach(([field, collection]) => {
+        if (device[field]) relations.push([field, collection, device[field]!]);
+      });
+    if (resource === "playstations")
+      (device.gamepads || []).forEach((id) =>
+        relations.push([`gamepad-${id}`, "gamepads", id]),
+      );
+    if (resource === "gamepads" && device.playstation)
+      relations.push(["playstation", "playstations", device.playstation]);
     const controller = new AbortController();
+    setRelated({});
+    setRelatedError("");
     void Promise.all(
-      links.map(async ([field, collection]) =>
-        device[field]
-          ? [
-              field,
-              await request<Device>(`${collection}/${device[field]}/`, {
-                signal: controller.signal,
-              }),
-            ]
-          : null,
+      relations.map(
+        async ([field, collection, id]) =>
+          [
+            field,
+            await request<Device>(`${collection}/${id}/`, {
+              signal: controller.signal,
+            }),
+          ] as [string, Device],
       ),
     )
       .then((results) => {
@@ -444,6 +456,41 @@ function DeviceDetails({
                 </dd>
               </div>
             ))}
+          {resource === "playstations" && (
+            <div>
+              <dt className="device-title">
+                <DeviceIcon resource="gamepads" size={18} />
+                Геймпады
+              </dt>
+              <dd>
+                {device.gamepads?.length ? (
+                  <ul>
+                    {device.gamepads.map((id) => (
+                      <li key={id}>
+                        {related[`gamepad-${id}`]
+                          ? deviceLabel(related[`gamepad-${id}`])
+                          : `#${id}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  "Не подключены"
+                )}
+              </dd>
+            </div>
+          )}
+          {resource === "gamepads" && (
+            <div>
+              <dt>PlayStation</dt>
+              <dd>
+                {device.playstation
+                  ? related.playstation
+                    ? `PlayStation ${related.playstation.club_number} · ${related.playstation.serial_number}`
+                    : `#${device.playstation}`
+                  : "Не подключён"}
+              </dd>
+            </div>
+          )}
           {resource === "stations" &&
             links.map(([field, collection, label]) => (
               <div key={field}>
@@ -546,7 +593,12 @@ function DeviceEditor({
     ),
   );
   const [choices, setChoices] = useState<Record<string, Device[]>>({});
-  const [choiceLoading, setChoiceLoading] = useState(resource === "stations");
+  const [selectedGamepads, setSelectedGamepads] = useState<number[]>(
+    device?.gamepads || [],
+  );
+  const [choiceLoading, setChoiceLoading] = useState(
+    resource === "stations" || resource === "playstations",
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -558,6 +610,26 @@ function DeviceEditor({
     else onClose();
   }, [busy, dirty, onClose]);
   useEffect(() => {
+    if (resource === "playstations") {
+      const controller = new AbortController();
+      setChoiceLoading(true);
+      void list<Device>("gamepads/", controller.signal)
+        .then((devices) => {
+          if (!controller.signal.aborted)
+            setChoices({
+              gamepads: devices.filter(
+                (pad) => !pad.playstation || pad.playstation === device?.id,
+              ),
+            });
+        })
+        .catch((err: Error) => {
+          if (!controller.signal.aborted) setError(err.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setChoiceLoading(false);
+        });
+      return () => controller.abort();
+    }
     if (resource !== "stations") return;
     const controller = new AbortController();
     setChoiceLoading(true);
@@ -596,7 +668,7 @@ function DeviceEditor({
     e.preventDefault();
     setError("");
     setBusy(true);
-    const payload: Record<string, string | number | null> = {};
+    const payload: Record<string, string | number | number[] | null> = {};
     for (const field of [...fields, "info"]) {
       payload[field] =
         field === "club_number"
@@ -611,6 +683,7 @@ function DeviceEditor({
       links.forEach(([field]) => {
         payload[field] = values[field] ? Number(values[field]) : null;
       });
+    if (resource === "playstations") payload.gamepads = selectedGamepads;
     try {
       await request(`${resource}/${device ? `${device.id}/` : ""}`, {
         method: device ? "PATCH" : "POST",
@@ -667,6 +740,41 @@ function DeviceEditor({
               </label>
             ))}
           </div>
+          {resource === "playstations" && (
+            <section className="form-section gamepad-connections">
+              <h2>Геймпады</h2>
+              <p className="field-hint">
+                Выберите один или несколько. Здесь доступны свободные геймпады и
+                уже подключённые к этой PlayStation.
+              </p>
+              {choiceLoading ? (
+                <Loading />
+              ) : choices.gamepads?.length ? (
+                choices.gamepads.map((pad) => (
+                  <label className="gamepad-choice" key={pad.id}>
+                    <span>{deviceLabel(pad)}</span>
+                    <input
+                      type="checkbox"
+                      aria-label={deviceLabel(pad)}
+                      checked={selectedGamepads.includes(pad.id)}
+                      onChange={(event) =>
+                        setSelectedGamepads((current) =>
+                          event.target.checked
+                            ? [...current, pad.id]
+                            : current.filter((id) => id !== pad.id),
+                        )
+                      }
+                    />
+                  </label>
+                ))
+              ) : (
+                <p>
+                  Свободных геймпадов нет. Добавьте их в разделе «Геймпады» или
+                  отключите от другой PlayStation.
+                </p>
+              )}
+            </section>
+          )}
           {resource === "stations" && (
             <div className="form-section">
               <h2>Комплектация</h2>

@@ -39,7 +39,8 @@ def queue_task_assigned(task):
     if not recipient or not recipient.is_active or recipient.is_superuser or not recipient.telegram_id:
         return
     from .permissions import person
-    message = f'Вам назначена новая задача: {task.title}\nПостановщик: {person(task.creator)["name"]}'
+    creator_name = person(task.creator)['name'] if task.creator_id else 'Система'
+    message = f'Вам назначена новая задача: {task.title}\nПостановщик: {creator_name}'
     if task.description:
         message += f'\n{task.description[:2000]}'
     TelegramNotification.objects.get_or_create(

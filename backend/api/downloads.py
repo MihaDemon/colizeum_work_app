@@ -10,14 +10,14 @@ from django.urls import reverse
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 
-from computers.models import Headset, Keyboard, Monitor, Mouse, PC, PlayStation, Station
+from computers.models import Headset, Keyboard, Monitor, Mouse, Gamepad, PC, PlayStation, Station
 from .qr import qr_png_response
 
 QR_DOWNLOAD_MAX_AGE = 300
 QR_DOWNLOAD_SALT = 'colizeum.device-qr-download'
 DEVICE_MODELS = {
     model._meta.model_name: model
-    for model in (Station, PC, Mouse, Keyboard, Headset, Monitor, PlayStation)
+    for model in (Station, PC, Mouse, Keyboard, Headset, Monitor, Gamepad, PlayStation)
 }
 
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from .models import Activity, CleanerVisit, NotificationPreferences, PhotoSettings, ScheduleDelivery, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
+from .models import Activity, AutomaticTaskTemplate, CleanerVisit, NotificationPreferences, PhotoSettings, ScheduleDelivery, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
 from .forms import WorkflowForm
 
 
@@ -51,6 +51,7 @@ admin.site.register(Activity, WorkflowAdmin)
 admin.site.register(TaskSubmission, WorkflowAdmin)
 admin.site.register(TaskSubmissionPhoto, WorkflowAdmin)
 admin.site.register(PhotoSettings, WorkflowAdmin)
+admin.site.register(AutomaticTaskTemplate, WorkflowAdmin)
 admin.site.register(NotificationPreferences, WorkflowAdmin)
 admin.site.register(ShiftExpense, WorkflowAdmin)
 

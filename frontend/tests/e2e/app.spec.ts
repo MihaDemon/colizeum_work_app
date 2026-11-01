@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import type { Task } from "../../src/lib/workspace";
 
 const namedFields = [
   { id: "before", label: "Before cleaning", required: true },
@@ -857,6 +858,9 @@ async function setup(
   let cleanerVisitedAt: string | null = null;
   let balance = 1000;
   let taskStatus = "active";
+  let workspaceFailure = Boolean(options.failure);
+  let workspaceReads = 0;
+  const incomingTasks: Task[] = [];
   let taskRemoved = false;
   let contactChecks = 0;
   let photoSettings = {
@@ -951,10 +955,11 @@ async function setup(
           file_name: "station-1-qr.png",
         },
       });
-    if (path.endsWith("/workspace/"))
+    if (path.endsWith("/workspace/")) {
+      workspaceReads += 1;
       return route.fulfill({
-        status: options.failure ? 500 : 200,
-        json: options.failure
+        status: workspaceFailure ? 500 : 200,
+        json: workspaceFailure
           ? { detail: "Сервер недоступен" }
           : {
               user: {
@@ -1043,7 +1048,7 @@ async function setup(
                     ]
                   : [],
                 tasks: taskRemoved
-                  ? []
+                  ? incomingTasks
                   : [
                       {
                         id: "task-1",
@@ -1063,10 +1068,12 @@ async function setup(
                         status: taskStatus,
                         createdAt: new Date().toISOString(),
                       },
+                      ...incomingTasks,
                     ],
               },
             },
       });
+    }
     if (path.endsWith("/shifts/shift-1/cleaner/"))
       cleanerVisitedAt = "2026-10-28T13:45:00+03:00";
     if (path === "/api/cleaner-visits/") {
@@ -1179,7 +1186,172 @@ async function setup(
     if (path.endsWith("/stations/")) return route.fulfill({ json: [station] });
     return route.fulfill({ json: [] });
   });
+  return {
+    assignTask() {
+      const title = `Новая задача ${incomingTasks.length + 1}`;
+      incomingTasks.push({
+        id: `incoming-${incomingTasks.length + 1}`,
+        title,
+        description: "Задача назначена другим сотрудником.",
+        adminId: "1",
+        managerId: "2",
+        priority: "normal",
+        requiresPhoto: false,
+        status: "active",
+        createdAt: new Date().toISOString(),
+      });
+      return title;
+    },
+    workspaceReads: () => workspaceReads,
+    setWorkspaceFailure(value: boolean) {
+      workspaceFailure = value;
+    },
+  };
 }
+
+test("new tasks appear on the open page without navigation or reload", async ({
+  page,
+}) => {
+  const server = await setup(page);
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: /Убрать игровые места/ }),
+  ).toBeVisible();
+  const title = server.assignTask();
+  await expect(
+    page.getByRole("button", { name: new RegExp(title) }),
+  ).toBeVisible({ timeout: 6000 });
+  await expect(
+    page.getByRole("heading", { name: "Текущая смена", exact: true }),
+  ).toBeVisible();
+});
+
+test("background task updates preserve an unfinished expense form", async ({
+  page,
+}) => {
+  const server = await setup(page);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Добавить расход", exact: true })
+    .click();
+  await page.getByLabel("Сумма расхода", { exact: true }).fill("125,50");
+  await page
+    .getByLabel("Описание расхода", { exact: true })
+    .fill("Незаконченный расход");
+  const reads = server.workspaceReads();
+  const title = server.assignTask();
+  const updated = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/workspace/") && response.status() === 200,
+  );
+  await updated;
+  expect(server.workspaceReads()).toBeGreaterThan(reads);
+  await expect(page.getByLabel("Сумма расхода", { exact: true })).toHaveValue(
+    "125,50",
+  );
+  await expect(
+    page.getByLabel("Описание расхода", { exact: true }),
+  ).toHaveValue("Незаконченный расход");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Отмена", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: new RegExp(title) }),
+  ).toBeVisible();
+});
+
+test("resuming a hidden page refreshes tasks immediately", async ({ page }) => {
+  const server = await setup(page);
+  await page.clock.install();
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Текущая смена", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const reads = server.workspaceReads();
+  const title = server.assignTask();
+  await page.clock.runFor(6000);
+  expect(server.workspaceReads()).toBe(reads);
+  await expect(
+    page.getByRole("button", { name: new RegExp(title) }),
+  ).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(
+    page.getByRole("button", { name: new RegExp(title) }),
+  ).toBeVisible({ timeout: 2000 });
+});
+
+test("reconnecting refreshes new tasks and clears a background refresh error", async ({
+  page,
+}) => {
+  const server = await setup(page);
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Текущая смена", exact: true }),
+  ).toBeVisible();
+  server.setWorkspaceFailure(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("alert")).toContainText("Сервер недоступен");
+  const title = server.assignTask();
+  server.setWorkspaceFailure(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(
+    page.getByRole("button", { name: new RegExp(title) }),
+  ).toBeVisible({ timeout: 2000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a stalled task refresh times out and retries without overlapping requests", async ({
+  page,
+}) => {
+  const server = await setup(page);
+  await page.clock.install();
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Текущая смена", exact: true }),
+  ).toBeVisible();
+  let reads = 0;
+  let release = () => {};
+  const stalled = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/workspace/", async (route) => {
+    reads += 1;
+    if (reads === 1) {
+      await stalled;
+      await route.abort().catch(() => {});
+    } else await route.fallback();
+  });
+  try {
+    const title = server.assignTask();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => reads).toBe(1);
+    await page.clock.runFor(6000);
+    expect(reads).toBe(1);
+    await page.clock.runFor(4000);
+    await expect(page.getByRole("alert")).toContainText("Сервер не ответил");
+    release();
+    await page.clock.runFor(3000);
+    await expect(
+      page.getByRole("button", { name: new RegExp(title) }),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(reads).toBe(2);
+  } finally {
+    release();
+  }
+});
 
 test("Telegram login opens the live Mini App without sample accounts", async ({
   page,
@@ -1419,7 +1591,9 @@ test("late night history uses the schedule date and keeps real handover times", 
   await setup(page, { lateNightHistory: true });
   await page.goto("/");
   await page.getByRole("button", { name: "Ещё", exact: true }).click();
-  await page.getByRole("button", { name: "История смен/задач", exact: true }).click();
+  await page
+    .getByRole("button", { name: "История смен/задач", exact: true })
+    .click();
   const row = page.locator(".cp-history-row");
   await expect(row.locator("summary strong").first()).toHaveText(
     "31 окт. · Ночная смена",

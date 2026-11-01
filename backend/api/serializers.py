@@ -1,12 +1,12 @@
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from rest_framework import serializers
 
 from api.mixins import DeviceSerializerMixin, QRCodeSerializerMixin
 from computers.models import (
-    Mouse, Keyboard, Monitor, Headset, PC, Station, PlayStation
+    Mouse, Keyboard, Monitor, Headset, Gamepad, PC, Station, PlayStation, PlayStationGamepad
 )
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
 from users.phones import normalize_staff_phone
@@ -66,6 +66,14 @@ class MonitorSerializer(DeviceSerializerMixin):
         model = Monitor
 
 
+class GamepadSerializer(DeviceSerializerMixin):
+    playstation = serializers.PrimaryKeyRelatedField(source='playstation_link.playstation', read_only=True, allow_null=True)
+
+    class Meta(DeviceSerializerMixin.Meta):
+        model = Gamepad
+        fields = (*DeviceSerializerMixin.Meta.fields, 'playstation')
+
+
 class PCSerializer(QRCodeSerializerMixin):
     class Meta:
         model = PC
@@ -101,10 +109,37 @@ class StationSerializer(QRCodeSerializerMixin):
 
 
 class PlayStationSerializer(QRCodeSerializerMixin):
+    gamepads = serializers.PrimaryKeyRelatedField(queryset=Gamepad.objects.all(), many=True, required=False)
+
+    def validate_gamepads(self, values):
+        if len({device.pk for device in values}) != len(values):
+            raise serializers.ValidationError('Один геймпад нельзя указать дважды.')
+        links = PlayStationGamepad.objects.filter(gamepad__in=values)
+        if self.instance:
+            links = links.exclude(playstation=self.instance)
+        if links.exists():
+            raise serializers.ValidationError('Геймпад уже подключён к другой PlayStation. Сначала отключите его там.')
+        return values
+
+    def create(self, validated_data):
+        try:
+            with transaction.atomic():
+                return super().create(validated_data)
+        except IntegrityError:
+            raise serializers.ValidationError({'gamepads': 'Подключения изменились. Обновите устройства и повторите сохранение.'})
+
+    def update(self, instance, validated_data):
+        try:
+            with transaction.atomic():
+                return super().update(instance, validated_data)
+        except IntegrityError:
+            raise serializers.ValidationError({'gamepads': 'Подключения изменились. Обновите устройства и повторите сохранение.'})
+
     class Meta:
         model = PlayStation
         fields = (
             'id',
+            'gamepads',
             'club_number',
             'serial_number',
             'warranty_until',

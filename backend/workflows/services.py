@@ -52,6 +52,8 @@ def open_shift(user, data):
     shift = Shift.objects.create(admin=user, photo_requirements=settings.report_fields, **data)
     from .schedules import bind_shift
     bind_shift(shift)
+    from .automatic_tasks import create_shift_tasks
+    create_shift_tasks(shift)
     event(user, 'Смена открыта', shift.get_shift_type_display())
     register = CashRegister.objects.get(pk=1)
     queue_management('shift_open', f'Смена открыта\nАдминистратор: {person(user)["name"]}\nТип: {shift.get_shift_type_display()}\nВремя: {shift.opened_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}\nНаличные в кассе: {number_format(register.balance, decimal_pos=2, force_grouping=True)} ₽', shift=shift)
@@ -64,6 +66,11 @@ def close_shift(user, pk, data):
     shift = own_shift(user)
     if str(shift.pk) != str(pk):
         raise Conflict('Эта смена больше не является вашей текущей сменой.')
+    pending = list(Task.objects.filter(required_for_shift=shift).exclude(
+        status__in=[Task.Status.MODERATION, Task.Status.ACCEPTED],
+    ).values_list('title', flat=True))
+    if pending:
+        raise Conflict('Перед закрытием смены отправьте обязательные задачи на проверку: ' + ', '.join(pending))
     photos = uploaded_photos(data, [
         ('desk_photo', 'desk', 'Стол администратора'),
         ('receipt_photo', 'receipt', 'Чек закрытия смены'),
@@ -144,6 +151,8 @@ def delete_task(user, pk):
         raise PermissionDenied('Удалить задачу может её постановщик или суперпользователь.')
     if task.deleted_at or task.status == Task.Status.ACCEPTED:
         raise Conflict('Можно удалить только незавершённую задачу.')
+    if task.required_for_shift_id:
+        raise Conflict('Обязательную задачу смены нельзя удалить. Отправьте её на проверку; настройки шаблона применяются к следующим сменам.')
     task.deleted_at = timezone.now()
     task.save(update_fields=['deleted_at'])
     TelegramNotification.objects.filter(Q(task=task) | Q(submission__task=task), status__in=['pending', 'sending']).update(status='failed', last_error='Задача удалена.')

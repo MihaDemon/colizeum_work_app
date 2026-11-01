@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from computers.models import Keyboard, Monitor, Mouse, PC, Station
+from computers.models import Keyboard, Monitor, Mouse, Gamepad, PC, Station, PlayStation, PlayStationGamepad
 
 
 class DeviceAdmin(admin.ModelAdmin):
@@ -22,6 +22,24 @@ class KeyboardAdmin(DeviceAdmin):
 @admin.register(Monitor)
 class MonitorAdmin(DeviceAdmin):
     pass
+
+
+@admin.register(Gamepad)
+class GamepadAdmin(DeviceAdmin):
+    pass
+
+
+class PlayStationGamepadInline(admin.TabularInline):
+    model = PlayStationGamepad
+    autocomplete_fields = ['gamepad']
+    extra = 0
+
+
+@admin.register(PlayStation)
+class PlayStationAdmin(admin.ModelAdmin):
+    list_display = ['club_number', 'serial_number', 'warranty_until']
+    search_fields = ['serial_number']
+    inlines = [PlayStationGamepadInline]
 
 
 @admin.register(PC)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   visibleTasks,
+  blockingShiftTasks,
   type StaffMember,
   type State,
   type Task,
@@ -54,6 +55,25 @@ function state(tasks: Task[]): State {
   };
 }
 describe("production task visibility", () => {
+  it("blocks closure only for this shift's required tasks awaiting completion or rework", () => {
+    const s = state([
+      task("required", { requiredForShiftId: "current" }),
+      task("rejected", { requiredForShiftId: "current", status: "rejected" }),
+      task("moderation", {
+        requiredForShiftId: "current",
+        status: "moderation",
+      }),
+      task("accepted", { requiredForShiftId: "current", status: "accepted" }),
+      task("old", { requiredForShiftId: "old" }),
+      task("manual"),
+    ]);
+    expect(blockingShiftTasks(s).map((t) => t.id)).toEqual([
+      "required",
+      "rejected",
+    ]);
+    s.shift = null;
+    expect(blockingShiftTasks(s)).toEqual([]);
+  });
   it("keeps the administrator's pending moderation and rework visible", () => {
     const s = state([
       task("moderation", { status: "moderation" }),

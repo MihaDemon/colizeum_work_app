@@ -24,6 +24,12 @@ class Headset(DeviceBaseModelMixin):
         verbose_name_plural = 'Наушники'
 
 
+class Gamepad(DeviceBaseModelMixin):
+    class Meta:
+        verbose_name = 'Геймпад'
+        verbose_name_plural = 'Геймпады'
+
+
 class Monitor(DeviceBaseModelMixin):
     class Meta:
         verbose_name = 'Монитор'
@@ -134,6 +140,7 @@ class Station(models.Model):
 
 
 class PlayStation(models.Model):
+    gamepads = models.ManyToManyField(Gamepad, through='PlayStationGamepad', blank=True, related_name='playstations', verbose_name='Геймпады')
     club_number = models.PositiveSmallIntegerField(
         verbose_name='Номер PlayStation',
         unique=True,
@@ -163,3 +170,12 @@ class PlayStation(models.Model):
 
     def __str__(self):
         return f'PlayStation | {self.serial_number}'
+
+
+class PlayStationGamepad(models.Model):
+    playstation = models.ForeignKey(PlayStation, on_delete=models.CASCADE, related_name='gamepad_links', verbose_name='PlayStation')
+    gamepad = models.OneToOneField(Gamepad, on_delete=models.CASCADE, related_name='playstation_link', verbose_name='Геймпад')
+
+    class Meta:
+        verbose_name = 'Подключение геймпада'
+        verbose_name_plural = 'Подключённые геймпады'
