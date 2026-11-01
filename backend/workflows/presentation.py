@@ -45,6 +45,8 @@ def task_data(task):
         'id': str(task.pk), 'title': task.title, 'description': task.description,
         'managerId': participant_id(task, 'creator'), 'adminId': participant_id(task, 'assignee'),
         'shiftId': str(task.shift_id) if task.shift_id else None,
+        'requiredForShiftId': str(task.required_for_shift_id) if task.required_for_shift_id else None,
+        'automatic': task.automatic_template_id is not None,
         'priority': task.priority, 'requiresPhoto': task.requires_photo,
         'photoMode': 'single' if task.requires_photo and task.photo_mode == 'optional' else task.photo_mode,
         'photoRequirements': task.photo_requirements, 'photos': photos,

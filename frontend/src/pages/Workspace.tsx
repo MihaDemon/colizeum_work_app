@@ -29,6 +29,7 @@ import {
   IconMoon,
   IconPlus,
   IconRefresh,
+  IconRepeat,
   IconShieldCheck,
   IconSun,
   IconWallet,
@@ -45,6 +46,7 @@ import { CashBalance } from "../components/CashBalance";
 import { Equipment } from "../pages/Equipment";
 import { PrivateImage } from "../components/PrivateImage";
 import { SchedulePage } from "../components/SchedulePage";
+import { AutomaticTasksPage } from "../components/AutomaticTasksPage";
 import {
   CleanerHistory,
   NotificationDetails,
@@ -60,6 +62,7 @@ import {
 import type { User } from "../lib/types";
 import {
   visibleTasks,
+  blockingShiftTasks,
   defaultReportPhotoFields,
   photoEvidenceError,
   photoFieldsError,
@@ -89,6 +92,7 @@ import {
 import "./workspace.css";
 
 type View =
+  | "automatic-tasks"
   | "personnel"
   | "schedule"
   | "cleaner"
@@ -191,6 +195,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           "personnel",
           "cash",
           "notification-settings",
+          "automatic-tasks",
         ].includes(detail.source || "")
       )
         equipmentDraft.current = detail;
@@ -234,6 +239,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const user = workspace.user;
   const isManager = user.role !== "admin";
   const ownsShift = user.role === "admin" && state.shift?.adminId === user.id;
+  const requiredTasks = blockingShiftTasks(state);
   const embedded = inTelegram();
   const tasks = visibleTasks(state, user);
   const scopedTasks =
@@ -592,6 +598,12 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </button>
                         <button
                           className="cp-button cp-button-secondary"
+                          disabled={requiredTasks.length > 0}
+                          title={
+                            requiredTasks.length
+                              ? "Сначала отправьте обязательные задачи на проверку"
+                              : undefined
+                          }
                           onClick={() => setForm("close")}
                         >
                           <IconDoorExit size={18} />
@@ -637,6 +649,12 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                             : "Уборщица"}
                         </button>
                       </div>
+                    )}
+                    {ownsShift && requiredTasks.length > 0 && (
+                      <p className="cp-inline-error" role="status">
+                        До закрытия смены отправьте на проверку:{" "}
+                        {requiredTasks.map((task) => task.title).join(", ")}.
+                      </p>
                     )}
                   </>
                   {user.role === "superuser" && (
@@ -764,6 +782,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       ...(isManager
                         ? [
                             {
+                              id: "automatic-tasks" as const,
+                              label: "Автоматические задачи",
+                              icon: IconRepeat,
+                            },
+                            {
                               id: "cleaner" as const,
                               label: "Уборщица",
                               icon: IconBrush,
@@ -798,6 +821,9 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     ))}
                   </div>
                 </>
+              )}
+              {view === "automatic-tasks" && isManager && (
+                <AutomaticTasksPage onBack={back} onDirty={setDirty} />
               )}
               {view === "photo-settings" && isManager && (
                 <PhotoSettingsPage
@@ -1130,6 +1156,12 @@ function TaskList({
             <span className="cp-task-main">
               <strong>{task.title}</strong>
               <span className="cp-task-metadata">
+                {task.automatic && (
+                  <span>
+                    <IconRepeat size={13} />
+                    Обязательная задача смены
+                  </span>
+                )}
                 {task.priority === "high" && (
                   <span className="cp-priority">
                     <IconFlag size={12} />
@@ -1213,7 +1245,14 @@ function TaskDetails({
         </div>
         <Status status={task.status} />
       </div>
-      {task.status !== "accepted" &&
+      {task.automatic && (
+        <p className="cp-field-hint">
+          Автоматическая задача смены. Для закрытия смены достаточно отправить
+          выполнение на проверку.
+        </p>
+      )}
+      {!task.requiredForShiftId &&
+        task.status !== "accepted" &&
         (user.role === "superuser" ||
           (user.role === "manager" && task.managerId === user.id)) && (
           <button
@@ -1485,6 +1524,7 @@ function WorkflowForm({
   onSave: (action: Action, message: string) => void;
 }) {
   const [error, setError] = useState("");
+  const requiredTasks = blockingShiftTasks(state);
   const { person, people } = usePeople();
   const [shiftType, setShiftType] = useState<"day" | "night">("day");
   const [selectedScheduleDate, setSelectedScheduleDate] = useState("");
@@ -1594,6 +1634,13 @@ function WorkflowForm({
         `${money(amount)} — расход сохранён и вычтен из кассы.`,
       );
     } else if (kind === "close") {
+      if (requiredTasks.length) {
+        setError(
+          "Перед закрытием смены отправьте обязательные задачи на проверку: " +
+            requiredTasks.map((task) => task.title).join(", "),
+        );
+        return;
+      }
       if (state.shift?.adminId !== user.id) {
         setError("Закрыть смену может только открывший её администратор.");
         return;
@@ -1831,6 +1878,12 @@ function WorkflowForm({
           )}
           {kind === "close" && (
             <>
+              {requiredTasks.length > 0 && (
+                <p className="cp-inline-error" role="status">
+                  Закрытие недоступно. Отправьте на проверку:{" "}
+                  {requiredTasks.map((task) => task.title).join(", ")}.
+                </p>
+              )}
               <h2 className="cp-form-section-title">Выручка за смену</h2>
               <p className="cp-field-hint">
                 Укажите выручку, полученную за эту смену.
@@ -2011,7 +2064,10 @@ function WorkflowForm({
             >
               Отмена
             </button>
-            <button className="cp-button cp-button-primary">
+            <button
+              className="cp-button cp-button-primary"
+              disabled={kind === "close" && requiredTasks.length > 0}
+            >
               {kind === "expense" ? (
                 <IconPlus size={17} />
               ) : kind === "create" ? (

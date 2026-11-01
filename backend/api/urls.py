@@ -3,12 +3,13 @@ from workflows import views as work
 from workflows import schedule_views as schedule
 from workflows import cash, notification_settings
 from workflows import personnel as staff
+from workflows import automatic_tasks
 from api.downloads import download_device_qr
 from rest_framework.routers import DefaultRouter
 
 from api.views import (
     AuthViewSet, CashRegisterViewSet, ExpensePhotoViewSet, ExpensesViewSet, HeadsetViewSet,
-    KeyboardViewSet, MonitorViewSet, MouseViewSet, PCViewSet,
+    KeyboardViewSet, MonitorViewSet, MouseViewSet, GamepadViewSet, PCViewSet,
     PlayStationViewSet, ReportPhotoViewSet, ReportViewSet, StationViewSet,
 )
 
@@ -21,6 +22,7 @@ router.register(r'headsets', HeadsetViewSet, basename='headset')
 router.register(r'monitors', MonitorViewSet, basename='monitor')
 router.register(r'pcs', PCViewSet, basename='pc')
 router.register(r'playstations', PlayStationViewSet, basename='playstation')
+router.register(r'gamepads', GamepadViewSet, basename='gamepad')
 router.register(r'stations', StationViewSet, basename='station')
 router.register(r'reports', ReportViewSet, basename='report')
 router.register(r'expenses', ExpensesViewSet, basename='expenses')
@@ -31,6 +33,8 @@ router.register(r'expense-photos', ExpensePhotoViewSet, basename='expensephoto')
 router.register('shifts', work.ShiftViewSet, basename='shift')
 router.register('tasks', work.TaskViewSet, basename='task')
 urlpatterns = [
+    path('automatic-tasks/', automatic_tasks.templates),
+    path('automatic-tasks/<int:pk>/', automatic_tasks.template_detail),
     path('cash-adjustment/', cash.adjust),
     path('notification-settings/', notification_settings.notification_settings),
     path('personnel/', staff.personnel),

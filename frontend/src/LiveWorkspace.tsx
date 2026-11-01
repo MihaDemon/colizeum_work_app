@@ -16,6 +16,9 @@ interface Snapshot {
   state: State;
 }
 
+const REFRESH_INTERVAL_MS = 3000;
+const REFRESH_TIMEOUT_MS = 10000;
+
 async function attach(body: FormData, field: string, value?: string) {
   if (!value?.startsWith("data:image/")) return;
   const blob = await (await fetch(value)).blob();
@@ -49,30 +52,66 @@ export default function LiveWorkspace({ account }: { account: User }) {
   const inFlight = useRef(false);
   const retry = useRef<{ signature: string; key: string } | null>(null);
   const refreshVersion = useRef(0);
+  const refreshRequest = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
   const refresh = useCallback(async () => {
+    if (!mounted.current) return;
+    refreshRequest.current?.abort();
+    const controller = new AbortController();
+    refreshRequest.current = controller;
     const version = ++refreshVersion.current;
-    const result = await request<Snapshot>("workspace/");
-    if (version !== refreshVersion.current) return;
-    snapshotRef.current = result;
-    setSnapshot(result);
-    setError("");
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REFRESH_TIMEOUT_MS);
+    try {
+      const result = await request<Snapshot>("workspace/", {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (!mounted.current || version !== refreshVersion.current) return;
+      snapshotRef.current = result;
+      setSnapshot(result);
+      setError("");
+    } catch (error) {
+      if (!mounted.current || version !== refreshVersion.current) return;
+      if (timedOut)
+        throw new Error("Сервер не ответил. Пробуем обновить данные ещё раз…");
+      if (!controller.signal.aborted) throw error;
+    } finally {
+      window.clearTimeout(timeout);
+      if (refreshRequest.current === controller) refreshRequest.current = null;
+    }
   }, []);
   useEffect(() => {
-    let mounted = true;
+    mounted.current = true;
     const update = () => {
-      if (!inFlight.current && document.visibilityState !== "hidden")
+      if (
+        !inFlight.current &&
+        !refreshRequest.current &&
+        document.visibilityState !== "hidden"
+      )
         void refresh().catch((e) => {
-          if (mounted) setError((e as Error).message);
+          if (mounted.current) setError((e as Error).message);
         });
     };
     update();
-    const timer = window.setInterval(update, 15000);
+    const timer = window.setInterval(update, REFRESH_INTERVAL_MS);
     window.addEventListener("focus", update);
+    window.addEventListener("online", update);
+    window.addEventListener("pageshow", update);
+    document.addEventListener("visibilitychange", update);
     return () => {
-      mounted = false;
+      mounted.current = false;
       ++refreshVersion.current;
+      refreshRequest.current?.abort();
+      refreshRequest.current = null;
       clearInterval(timer);
       window.removeEventListener("focus", update);
+      window.removeEventListener("online", update);
+      window.removeEventListener("pageshow", update);
+      document.removeEventListener("visibilitychange", update);
     };
   }, [refresh]);
 
@@ -80,6 +119,8 @@ export default function LiveWorkspace({ account }: { account: User }) {
     if (inFlight.current) throw new Error("Дождитесь завершения сохранения.");
     inFlight.current = true;
     ++refreshVersion.current;
+    refreshRequest.current?.abort();
+    refreshRequest.current = null;
     setBusy(true);
     try {
       let path = "";

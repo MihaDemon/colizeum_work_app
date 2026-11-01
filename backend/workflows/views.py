@@ -182,7 +182,12 @@ def cleaner_history(request):
 
 @api_view(['GET'])
 def private_file(request, kind, pk):
-    if kind == 'submission-photo':
+    if kind == 'automatic-reference':
+        from .models import AutomaticTaskTemplate
+        if not (request.user.is_staff or request.user.is_superuser):
+            raise PermissionDenied('Настройки автоматических задач доступны только управляющим и суперпользователям.')
+        image = get_object_or_404(AutomaticTaskTemplate, pk=pk).reference_photo
+    elif kind == 'submission-photo':
         photo = get_object_or_404(TaskSubmissionPhoto.objects.filter(submission__task__in=visible_tasks(request.user, Task.objects.all())), pk=pk)
         image = photo.image
     elif kind in ['reference', 'submission']:

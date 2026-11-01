@@ -21,11 +21,11 @@ from api.qr import qr_png_response
 from api.downloads import qr_download_link
 from api.serializers import (
     CashRegisterSerializer, ExpensePhotoSerializer, ExpensesSerializer, HeadsetSerializer,
-    KeyboardSerializer, MonitorSerializer, MouseSerializer, PCSerializer,
+    KeyboardSerializer, MonitorSerializer, MouseSerializer, GamepadSerializer, PCSerializer,
     PlayStationSerializer, ReportPhotoSerializer, ReportSerializer,
     StationSerializer, UserSerializer, StaffPhoneField,
 )
-from computers.models import Headset, Keyboard, Monitor, Mouse, PC, PlayStation, Station
+from computers.models import Headset, Keyboard, Monitor, Mouse, Gamepad, PC, PlayStation, Station
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
 from reports.exceptions import InsufficientCash
 from users.models import AdminUser
@@ -188,8 +188,13 @@ class PCViewSet(DeviceViewSet):
 
 
 class PlayStationViewSet(DeviceViewSet):
-    queryset = PlayStation.objects.all()
+    queryset = PlayStation.objects.prefetch_related('gamepads')
     serializer_class = PlayStationSerializer
+
+
+class GamepadViewSet(DeviceViewSet):
+    queryset = Gamepad.objects.select_related('playstation_link__playstation')
+    serializer_class = GamepadSerializer
 
 
 class StationViewSet(DeviceViewSet):

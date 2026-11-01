@@ -42,6 +42,8 @@ export function errorMessage(data: unknown): string {
           title: "Название",
           description: "Описание",
           assignee: "Исполнитель",
+          gamepads: "Геймпады",
+          playstation: "PlayStation",
           priority: "Приоритет",
           requires_photo: "Обязательность фотографий",
           reference_photo: "Фото-пример",

@@ -41,6 +41,8 @@ class Shift(UserHistory):
 
 
 class Task(UserHistory):
+    automatic_template = models.ForeignKey('AutomaticTaskTemplate', on_delete=models.PROTECT, null=True, blank=True, related_name='tasks', verbose_name='Шаблон автоматической задачи')
+    required_for_shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, related_name='required_tasks', verbose_name='Обязательна для смены')
     deleted_at = models.DateTimeField(null=True, blank=True, editable=False, verbose_name="Удалена")
     class Status(models.TextChoices):
         ACTIVE = 'active', 'К выполнению'
@@ -69,7 +71,30 @@ class Task(UserHistory):
         verbose_name = 'Задача'
         verbose_name_plural = 'Задачи'
         ordering = ['-created_at']
-        constraints = [models.CheckConstraint(condition=~Q(creator=models.F('assignee')), name='no_self_assigned_task')]
+        constraints = [models.CheckConstraint(condition=~Q(creator=models.F('assignee')), name='no_self_assigned_task'),
+                       models.UniqueConstraint(fields=['automatic_template', 'required_for_shift'], condition=Q(automatic_template__isnull=False), name='one_automatic_task_per_shift')]
+
+
+class AutomaticTaskTemplate(UserHistory):
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Постановщик')
+    title = models.CharField(max_length=200, verbose_name='Название')
+    description = models.TextField(blank=True, verbose_name='Описание')
+    shift_type = models.CharField(max_length=5, choices=[('both', 'Любая смена'), ('day', 'Дневная'), ('night', 'Ночная')], default='both', verbose_name='Смена')
+    enabled = models.BooleanField(default=True, verbose_name='Включена')
+    priority = models.CharField(max_length=6, choices=[('normal', 'Обычный'), ('high', 'Высокий'), ('low', 'Низкий')], default='normal', verbose_name='Приоритет')
+    photo_mode = models.CharField(max_length=8, choices=[('optional', 'Необязательное фото'), ('single', 'Одно фото'), ('multiple', 'Несколько фото'), ('named', 'Именованные фотографии')], default='optional', verbose_name='Режим фотографий')
+    photo_requirements = models.JSONField(default=list, blank=True, verbose_name='Требования к фотографиям')
+    reference_photo = EvidenceImageField(upload_to='tasks/automatic/%Y/%m/', blank=True, verbose_name='Фото-пример')
+    version = models.PositiveIntegerField(default=1, verbose_name='Версия')
+    created_at = models.DateTimeField(default=timezone.now, verbose_name='Создана')
+
+    class Meta:
+        verbose_name = 'Автоматическая задача'
+        verbose_name_plural = 'Автоматические задачи'
+        ordering = ['created_at', 'pk']
+
+    def __str__(self):
+        return self.title
 
 
 class TaskSubmission(UserHistory):

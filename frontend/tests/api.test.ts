@@ -98,6 +98,16 @@ describe("API transport", () => {
   });
 });
 describe("QR lookup", () => {
+  it("recognizes gamepads by their serial number", () => {
+    expect(
+      lookupFromQr(
+        "https://club.example/api/gamepads/lookup/?serial_number=GP-1",
+      ),
+    ).toEqual({
+      resource: "gamepads",
+      path: "gamepads/lookup/?serial_number=GP-1",
+    });
+  });
   it("preserves punctuation and Unicode serial numbers without trusting the scanned host", () => {
     const serial = "SN/Колизеум ?&+123";
     const result = lookupFromQr(

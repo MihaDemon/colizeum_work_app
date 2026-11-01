@@ -28,6 +28,8 @@ export interface Device {
   headset?: number | null;
   monitor?: number | null;
   pc?: number | null;
+  gamepads?: number[];
+  playstation?: number | null;
 }
 export type Resource =
   | "stations"
@@ -36,4 +38,5 @@ export type Resource =
   | "headsets"
   | "monitors"
   | "pcs"
-  | "playstations";
+  | "playstations"
+  | "gamepads";

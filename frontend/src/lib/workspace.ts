@@ -32,6 +32,8 @@ export interface StaffMember {
 }
 
 export interface Task {
+  automatic?: boolean;
+  requiredForShiftId?: string | null;
   submissionVersion?: number;
   id: string;
   title: string;
@@ -196,6 +198,17 @@ export function photoEvidenceError(
       return `Добавьте обязательные фотографии: ${missing.map((field) => field.label).join(", ")}.`;
   }
   return "";
+}
+
+export function blockingShiftTasks(state: State): Task[] {
+  return state.shift
+    ? state.tasks.filter(
+        (task) =>
+          task.requiredForShiftId === state.shift!.id &&
+          task.status !== "moderation" &&
+          task.status !== "accepted",
+      )
+    : [];
 }
 
 export function visibleTasks(state: State, persona: StaffMember): Task[] {

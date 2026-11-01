@@ -2,6 +2,7 @@ import {
   IconCpu,
   IconDeviceDesktop,
   IconDeviceGamepad2,
+  IconDeviceGamepad,
   IconDevicesPc,
   IconHeadphones,
   IconKeyboard,
@@ -17,6 +18,7 @@ const icons = {
   headsets: IconHeadphones,
   monitors: IconDeviceDesktop,
   playstations: IconDeviceGamepad2,
+  gamepads: IconDeviceGamepad,
 } satisfies Record<Resource, typeof IconCpu>;
 
 export function DeviceIcon({

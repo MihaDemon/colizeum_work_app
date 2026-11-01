@@ -1,0 +1,31 @@
+.automatic-template {
+  padding-block: 20px;
+  border-bottom: 1px solid var(--cp-line);
+}
+.automatic-template h2 {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.automatic-template > p {
+  margin-top: 12px;
+}
+.automatic-task-toggle,
+.gamepad-choice {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font: inherit;
+  min-height: 48px;
+  margin-block: 16px;
+}
+.automatic-task-toggle input,
+.gamepad-choice input {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex: 0 0 22px;
+  padding: 0;
+  accent-color: var(--cp-accent);
+}
