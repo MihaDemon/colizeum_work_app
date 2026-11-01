@@ -51,7 +51,7 @@ class WorkflowTests(APITestCase):
         self.client.force_authenticate(user)
 
     def open(self, kind='night'):
-        response = self.client.post('/api/shifts/open/', {'shift_type': kind})
+        response = self.client.post('/api/shifts/open/', {'shift_type': kind, 'schedule_date': timezone.localdate().isoformat()})
         self.assertEqual(response.status_code, 201, response.data)
         return response.data['id']
 
@@ -197,8 +197,9 @@ class WorkflowTests(APITestCase):
 
     def test_idempotent_money_and_same_key_payload_conflict(self):
         key = str(uuid.uuid4())
-        first = self.client.post('/api/shifts/open/', {'shift_type': 'night'}, HTTP_IDEMPOTENCY_KEY=key)
-        again = self.client.post('/api/shifts/open/', {'shift_type': 'night'}, HTTP_IDEMPOTENCY_KEY=key)
+        data = {'shift_type': 'night', 'schedule_date': timezone.localdate().isoformat()}
+        first = self.client.post('/api/shifts/open/', data, HTTP_IDEMPOTENCY_KEY=key)
+        again = self.client.post('/api/shifts/open/', data, HTTP_IDEMPOTENCY_KEY=key)
         self.assertEqual(first.data, again.data)
         self.assertEqual(Shift.objects.count(), 1)
         key = str(uuid.uuid4())
@@ -361,7 +362,7 @@ class ShiftConcurrencyTests(TransactionTestCase):
     def test_simultaneous_close_credits_cash_once(self):
         CashRegister.objects.create(balance=0)
         user = User.objects.create(username='closing_admin')
-        shift = open_shift(user, {'shift_type': 'night'})
+        shift = open_shift(user, {'shift_type': 'night', 'schedule_date': timezone.localdate()})
         barrier = Barrier(2)
         with tempfile.TemporaryDirectory() as directory, override_settings(MEDIA_ROOT=directory):
             def worker(_):

@@ -54,5 +54,5 @@ def notification_settings(request):
             record.telegram = {**record.telegram, **serializer.validated_data}
             record.save(update_fields=['telegram'])
             disabled = [kind for kind, enabled in serializer.validated_data.items() if not enabled]
-            TelegramNotification.objects.filter(recipient=request.user, kind__in=disabled, status__in=['pending', 'sending']).update(status='skipped', last_error='Уведомление отключено получателем.')
+            TelegramNotification.objects.filter(recipient=request.user, kind__in=disabled, status__in=['pending', 'sending']).exclude(schedule_delivery__source='manual').update(status='skipped', last_error='Уведомление отключено получателем.')
     return Response(preferences(request.user))

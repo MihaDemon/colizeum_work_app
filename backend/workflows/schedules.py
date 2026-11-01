@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .models import Activity, SchedulePeriod, ScheduleRevision, ScheduleSettings, Shift
-from .notifications import MOSCOW, queue_management
+from .notifications import MOSCOW
 from .permissions import person
 from .presentation import participant_name
 from users.history import participant_id
@@ -77,7 +77,9 @@ def check_version(period, version):
 
 def settings_data():
     config, _ = ScheduleSettings.objects.get_or_create(pk=1)
-    return {'defaultAdminId': str(config.default_admin_id) if config.default_admin_id else None, 'version': config.version}
+    return {'defaultAdminId': str(config.default_admin_id) if config.default_admin_id else None, 'version': config.version,
+            'automaticEnabled': config.automatic_enabled, 'automaticContent': config.automatic_content,
+            'manualContent': config.manual_content}
 
 
 def summary(period):
@@ -130,17 +132,29 @@ def overview(user):
 def configure(user, data):
     locked(user)
     if not user.is_superuser:
-        raise PermissionDenied('Назначить администратора по умолчанию может только суперпользователь.')
+        raise PermissionDenied('Изменять настройки графика может только суперпользователь.')
     config, _ = ScheduleSettings.objects.get_or_create(pk=1)
     from .services import Conflict
     if data['version'] != config.version:
         raise Conflict('Настройки графика изменились. Обновите страницу.')
-    pk = data.get('default_admin')
-    if pk is not None and not active_admins().filter(pk=pk).exists():
-        raise ValidationError('Выберите действующего администратора.')
-    config.default_admin_id = pk
+    fields = ['version']
+    if 'default_admin' in data:
+        pk = data['default_admin']
+        if pk is not None and not active_admins().filter(pk=pk).exists():
+            raise ValidationError('Выберите действующего администратора.')
+        config.default_admin_id = pk
+        fields.append('default_admin')
+    for field in ('automatic_enabled', 'automatic_content', 'manual_content'):
+        if field in data:
+            setattr(config, field, data[field])
+            fields.append(field)
     config.version += 1
-    config.save(update_fields=['default_admin', 'version'])
+    config.save(update_fields=fields)
+    if not config.automatic_enabled:
+        from .models import TelegramNotification
+        TelegramNotification.objects.filter(kind='schedule', status__in=['pending', 'sending']).exclude(
+            schedule_delivery__source='manual',
+        ).update(status='skipped', last_error='Автоматическая отправка графиков выключена.')
     return settings_data()
 
 
@@ -243,7 +257,7 @@ def restore(user, period, data):
 
 def bind_shift(shift):
     # Called inside open_shift's register lock and transaction, even for an unplanned shift.
-    shift.schedule_date = shift.opened_at.astimezone(MOSCOW).date()
+    shift.schedule_date = shift.schedule_date or shift.opened_at.astimezone(MOSCOW).date()
     period = ensure_period(shift.schedule_date)
     shift.schedule_revision = head(period)
     shift.proposed_admin = shift.schedule_revision.plan.get(f'{shift.schedule_date}/{shift.shift_type}') or {}
@@ -265,5 +279,8 @@ def publish_due_schedules():
         period.summary_image.save(f'period-{period.pk}-v{period.version}.png', ContentFile(image), save=False)
         period.summary_created_at = timezone.now()
         period.save(update_fields=['summary_image', 'summary_created_at'])
-        queue_management('schedule', f'Итоговый график {period}. Версия {period.version}. План и фактические смены.', schedule=period)
+        config, _ = ScheduleSettings.objects.get_or_create(pk=1)
+        if config.automatic_enabled:
+            from .schedule_delivery import prepare_delivery
+            prepare_delivery(period, head(period), config.automatic_content, 'automatic', snapshot=snapshot)
         Activity.objects.create(title='Итоговый график готов', description=f'График {period}. Версия {period.version}. План и фактические смены.', kind='schedule')

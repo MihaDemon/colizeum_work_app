@@ -40,6 +40,7 @@ urlpatterns = [
     path('schedules/<int:pk>/', schedule.period),
     path('schedules/<int:pk>/generate/', schedule.generate),
     path('schedules/<int:pk>/restore/', schedule.restore),
+    path('schedules/<int:pk>/send/', schedule.send),
     path('schedules/<int:pk>/image/', schedule.image),
     path('device-qr/<str:ticket>/', download_device_qr, name='device-qr-download'),
     path('workspace/', work.workspace),

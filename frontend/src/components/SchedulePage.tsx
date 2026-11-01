@@ -5,6 +5,8 @@ import {
   IconChevronRight,
   IconHistory,
   IconWand,
+  IconSend,
+  IconSettings,
 } from "@tabler/icons-react";
 import { request } from "../lib/api";
 import { cleanerDateTime } from "../lib/format";
@@ -12,6 +14,11 @@ import type { StaffMember } from "../lib/workspace";
 import { useDraft } from "../lib/useDraft";
 import { PrivateImage } from "./PrivateImage";
 import "./schedule.css";
+import {
+  ScheduleSendingSettings,
+  scheduleContentNames,
+  type ScheduleSettings,
+} from "./ScheduleSendingSettings";
 
 type Plan = Record<string, StaffMember | null>;
 interface Period {
@@ -28,7 +35,7 @@ interface Overview {
   future: Period;
   archive: Period[];
   admins: StaffMember[];
-  settings: { defaultAdminId: string | null; version: number };
+  settings: ScheduleSettings;
 }
 interface Actual {
   id: string;
@@ -67,12 +74,16 @@ export function SchedulePage({
   onBack,
   onDirty,
   onOpenShift,
+  settingsOpen,
+  onSettingsOpenChange,
 }: {
   user: StaffMember;
   initialId?: string;
   onBack: () => void;
   onDirty: (value: boolean) => void;
   onOpenShift: (id: string, periodId: string) => void;
+  settingsOpen: boolean;
+  onSettingsOpenChange: (open: boolean) => void;
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [period, setPeriod] = useState<Detail | null>(null);
@@ -278,6 +289,15 @@ export function SchedulePage({
     new Set(Object.keys(plan).map((key) => key.split("/")[0])),
   ).sort();
   const selectedActual = cell ? period?.actual[cell] || [] : [];
+  if (settingsOpen && overview)
+    return (
+      <ScheduleSendingSettings
+        settings={overview.settings}
+        onBack={() => onSettingsOpenChange(false)}
+        onSave={(settings) => setOverview({ ...overview, settings })}
+        onDirty={onDirty}
+      />
+    );
   return (
     <section className="schedule-page">
       <button className="cp-back" onClick={onBack}>
@@ -286,6 +306,16 @@ export function SchedulePage({
       </button>
       <div className="cp-page-heading">
         <h1>График смен</h1>
+        {user.role === "superuser" && !editing && (
+          <button
+            className="cp-button cp-button-secondary"
+            disabled={busy || !overview}
+            onClick={() => onSettingsOpenChange(true)}
+          >
+            <IconSettings size={18} />
+            Настройки отправки
+          </button>
+        )}
       </div>
       {error && (
         <div role="alert" className="cp-inline-error">
@@ -366,10 +396,43 @@ export function SchedulePage({
                 {displayDate(period.start)} — {displayDate(period.end)}
               </h2>
               <p className="cp-list-hint">
-                Версия {period.viewVersion}. Итог отправляется{" "}
-                {cleanerDateTime(period.sendAt)} по Москве. До этого времени
-                завершённый период можно исправлять.
+                Версия {period.viewVersion}. Период исправлений заканчивается{" "}
+                {cleanerDateTime(period.sendAt)} по Москве.{" "}
+                {overview.settings.automaticEnabled !== false
+                  ? `После этого срока отправляется автоматически: ${scheduleContentNames[overview.settings.automaticContent || "both"].toLowerCase()}.`
+                  : "Автоматическая отправка выключена."}
               </p>
+              {!editing && (
+                <div className="schedule-actions">
+                  <button
+                    className="cp-button cp-button-secondary"
+                    onClick={() =>
+                      perform(async () => {
+                        const result = await post<{ queued: number }>(
+                          `schedules/${period.id}/send/`,
+                          { revision: period.viewVersion },
+                        );
+                        setMessage(
+                          result.queued
+                            ? "График поставлен в очередь. Бот отправит изображение вам в Telegram."
+                            : "Не удалось поставить график в очередь отправки.",
+                        );
+                      })
+                    }
+                  >
+                    <IconSend size={18} />
+                    Отправить себе в Telegram
+                  </button>
+                  <span className="cp-field-hint">
+                    {
+                      scheduleContentNames[
+                        overview.settings.manualContent || "both"
+                      ]
+                    }{" "}
+                    · версия {period.viewVersion}
+                  </span>
+                </div>
+              )}
               {period.unavailable.length > 0 && (
                 <p className="cp-inline-error">
                   В графике есть недоступные сотрудники. Проверьте назначения.

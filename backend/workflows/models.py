@@ -20,11 +20,11 @@ class PhotoSettings(models.Model):
 
 class Shift(UserHistory):
     schedule_revision = models.ForeignKey('ScheduleRevision', on_delete=models.PROTECT, null=True, blank=True, verbose_name='План при открытии')
-    schedule_date = models.DateField(null=True, blank=True, verbose_name='Дата в графике')
     proposed_admin = models.JSONField(default=dict, editable=False, verbose_name='Назначенный сотрудник при открытии')
     photo_requirements = models.JSONField(default=default_report_fields, blank=True, verbose_name='Требования к фотографиям')
     admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор')
     shift_type = models.CharField(max_length=5, choices=[('day', 'День'), ('night', 'Ночь')], verbose_name='Тип смены')
+    schedule_date = models.DateField(default=timezone.localdate, null=True, blank=True, verbose_name='Дата по графику')
     opened_at = models.DateTimeField(auto_now_add=True, verbose_name='Открыта')
     closed_at = models.DateTimeField(null=True, blank=True, verbose_name='Закрыта')
     report = models.OneToOneField('reports.Report', on_delete=models.PROTECT, null=True, blank=True, related_name='work_shift', verbose_name='Отчёт')
@@ -138,6 +138,7 @@ class CleanerVisit(UserHistory):
 
 
 class TelegramNotification(UserHistory):
+    schedule_delivery = models.ForeignKey('ScheduleDelivery', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Отправка графика')
     task = models.ForeignKey(Task, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Назначенная задача')
     schedule = models.ForeignKey('SchedulePeriod', on_delete=models.PROTECT, null=True, blank=True, verbose_name='График')
     kind = models.CharField(max_length=16, default='task', choices=[('task', 'Задача на проверке'), ('task_assigned', 'Новая задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица'), ('schedule', 'Итоговый график')], verbose_name='Событие')
@@ -167,7 +168,8 @@ class TelegramNotification(UserHistory):
                 | Q(kind='schedule', task__isnull=True, submission__isnull=True, shift__isnull=True, expense__isnull=True, schedule__isnull=False)
             ), name='notification_has_matching_target'),
             models.UniqueConstraint(fields=['kind', 'shift', 'recipient'], condition=Q(shift__isnull=False), name='unique_shift_event_recipient'),
-            models.UniqueConstraint(fields=['schedule', 'recipient'], condition=Q(kind='schedule'), name='unique_schedule_recipient'),
+            models.UniqueConstraint(fields=['schedule_delivery', 'recipient'], condition=Q(schedule_delivery__isnull=False), name='unique_schedule_delivery_recipient'),
+            models.CheckConstraint(condition=Q(kind='schedule') | Q(schedule_delivery__isnull=True), name='schedule_delivery_notification_kind'),
             models.UniqueConstraint(fields=['expense', 'recipient'], condition=Q(kind='expense'), name='unique_expense_recipient'),
             models.UniqueConstraint(fields=['task', 'recipient'], condition=Q(kind='task_assigned'), name='unique_assignment_recipient'),
         ]
@@ -197,10 +199,19 @@ class CommandReceipt(models.Model):
         constraints = [models.UniqueConstraint(fields=['user', 'key'], name='unique_employee_command')]
 
 
+class ScheduleContent(models.TextChoices):
+    BOTH = 'both', 'План и факт'
+    PLAN = 'plan', 'Только план'
+    ACTUAL = 'actual', 'Только факт'
+
+
 class ScheduleSettings(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     default_admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Администратор по умолчанию')
     version = models.PositiveIntegerField(default=1, verbose_name='Версия')
+    automatic_enabled = models.BooleanField(default=True, verbose_name='Автоматическая отправка')
+    automatic_content = models.CharField(max_length=6, choices=ScheduleContent.choices, default=ScheduleContent.BOTH, verbose_name='Содержание автоматической отправки')
+    manual_content = models.CharField(max_length=6, choices=ScheduleContent.choices, default=ScheduleContent.BOTH, verbose_name='Содержание ручной отправки')
 
     class Meta:
         verbose_name = 'Настройки графика'
@@ -240,3 +251,19 @@ class ScheduleRevision(UserHistory):
         verbose_name_plural = 'Версии графика'
         ordering = ['-number']
         constraints = [models.UniqueConstraint(fields=['period', 'number'], name='unique_schedule_revision')]
+
+
+class ScheduleDelivery(UserHistory):
+    period = models.ForeignKey(SchedulePeriod, on_delete=models.PROTECT, related_name='deliveries', verbose_name='График')
+    revision = models.ForeignKey(ScheduleRevision, on_delete=models.PROTECT, verbose_name='Версия графика')
+    content = models.CharField(max_length=6, choices=ScheduleContent.choices, verbose_name='Содержание')
+    source = models.CharField(max_length=9, choices=[('manual', 'Вручную'), ('automatic', 'Автоматически')], verbose_name='Способ отправки')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Отправитель')
+    image = EvidenceImageField(upload_to='schedules/deliveries/%Y/%m/', verbose_name='Снимок графика')
+    created_at = models.DateTimeField(default=timezone.now, verbose_name='Подготовлена')
+
+    class Meta:
+        verbose_name = 'Отправка графика'
+        verbose_name_plural = 'Отправки графиков'
+        ordering = ['-created_at', '-pk']
+        constraints = [models.UniqueConstraint(fields=['period'], condition=Q(source='automatic'), name='one_automatic_schedule_delivery')]

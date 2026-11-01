@@ -4,6 +4,7 @@ from reports.models import CashRegister, Expenses, Report
 from users.history import archived_people, participant_id
 from .models import Activity, PhotoSettings, Shift, Task
 from .permissions import person, visible_tasks
+from .scheduling import opening_schedule
 
 
 def file_url(kind, pk):
@@ -62,6 +63,7 @@ def shift_data(shift, include_cleaner=True):
         'id': str(shift.pk), 'adminId': participant_id(shift, 'admin'), 'type': shift.shift_type,
         'adminName': participant_name(shift, 'admin'), 'cleanerVisitedAt': iso(cleaner.occurred_at) if cleaner and include_cleaner else None,
         'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
+        'scheduleDate': iso(shift.schedule_date),
         'photoRequirements': shift.photo_requirements,
         **({'balance': float(CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0)} if not report else {}),
         **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
@@ -105,6 +107,7 @@ def workspace_data(user):
         'id': f'legacy-{r.pk}', 'adminId': participant_id(r, 'admin'), 'type': r.shift,
         # A date anchor is only used to format the date; the UI does not invent shift times.
         'openedAt': f'{r.date.isoformat()}T12:00:00+03:00', 'legacy': True,
+        'scheduleDate': iso(r.date),
         'cash': float(r.cash), 'cards': float(r.cards), 'sbp': float(r.spb),
         'total': str(r.cash + r.cards + r.spb),
         'photos': {p.label or f'Фото {p.pk}': file_url('report', p.pk) for p in r.photos.all()},
@@ -117,6 +120,7 @@ def workspace_data(user):
     return {
         'user': person(user), 'people': [person(p) for p in people] + archives,
         'state': {
+            'shiftOpening': opening_schedule(),
             'photoSettings': {'reportFields': photo_settings.report_fields, 'version': photo_settings.version},
             'shift': shift_data(current) if current else None,
             'shifts': sorted([shift_data(s, include_cleaner=user.is_staff or user.is_superuser) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],

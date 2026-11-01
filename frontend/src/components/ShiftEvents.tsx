@@ -98,6 +98,9 @@ export function NotificationDetails({
           {shift && (
             <>
               <h2>{shift.type === "day" ? "Дневная смена" : "Ночная смена"}</h2>
+              {shift.scheduleDate && (
+                <p>Дата по графику: {date(shift.scheduleDate)}</p>
+              )}
               <p>
                 Открыта: {date(shift.openedAt)} в {time(shift.openedAt)}
               </p>

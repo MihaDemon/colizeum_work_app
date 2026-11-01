@@ -95,6 +95,8 @@ export default function LiveWorkspace({ account }: { account: User }) {
         case "OPEN_SHIFT":
           path = "shifts/open/";
           body.append("shift_type", action.shiftType);
+          if (action.scheduleDate)
+            body.append("schedule_date", action.scheduleDate);
           break;
         case "CLOSE_SHIFT": {
           const shift = snapshotRef.current?.state.shift;

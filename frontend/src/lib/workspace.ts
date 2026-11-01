@@ -67,6 +67,7 @@ export interface Shift {
   adminId: string;
   type: "day" | "night";
   openedAt: string;
+  scheduleDate?: string;
   closedAt?: string;
   cash?: number;
   cards?: number;
@@ -99,6 +100,7 @@ export interface Activity {
 }
 
 export interface State {
+  shiftOpening?: { today: string; nightDate: string | null };
   photoSettings?: PhotoSettings;
   shift: Shift | null;
   shifts: Shift[];
@@ -120,7 +122,12 @@ export type NewTask = Pick<
 export type Action =
   | { type: "DELETE_TASK"; actorId: string; taskId: string }
   | { type: "MARK_CLEANER"; actorId: string; shiftId: string; confirmed: true }
-  | { type: "OPEN_SHIFT"; actorId: string; shiftType: "day" | "night" }
+  | {
+      type: "OPEN_SHIFT";
+      actorId: string;
+      shiftType: "day" | "night";
+      scheduleDate?: string;
+    }
   | {
       type: "CLOSE_SHIFT";
       actorId: string;
