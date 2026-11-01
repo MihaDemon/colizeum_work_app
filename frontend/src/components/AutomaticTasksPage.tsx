@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { IconArrowLeft, IconPlus, IconPencil } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconPlus,
+  IconPencil,
+  IconTrash,
+} from "@tabler/icons-react";
 import { request } from "../lib/api";
+import { confirmAction, haptic } from "../lib/telegram";
 import { useDraft } from "../lib/useDraft";
 import {
   photoFieldsError,
@@ -34,9 +40,11 @@ const shiftNames = {
 export function AutomaticTasksPage({
   onBack,
   onDirty,
+  onEditorBackChange,
 }: {
   onBack: () => void;
   onDirty: (value: boolean) => void;
+  onEditorBackChange: (handler: (() => void) | null) => void;
 }) {
   const [items, setItems] = useState<Template[]>([]);
   const [editing, setEditing] = useState<Template | null | undefined>(
@@ -45,6 +53,74 @@ export function AutomaticTasksPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  const [pending, setPending] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const running = useRef(false);
+  const retries = useRef(new Map<string, { signature: string; key: string }>());
+  useDraft(false, pending !== null, "automatic-task-list");
+  useEffect(() => {
+    onEditorBackChange(
+      editing === undefined
+        ? null
+        : () => {
+            onDirty(false);
+            setEditing(undefined);
+          },
+    );
+    return () => onEditorBackChange(null);
+  }, [editing, onDirty, onEditorBackChange]);
+
+  const changeTemplate = async (
+    item: Template,
+    action: "toggle" | "delete",
+  ) => {
+    if (running.current) return;
+    running.current = true;
+    try {
+      if (
+        action === "delete" &&
+        !(await confirmAction(
+          `Удалить автозадачу «${item.title.length > 80 ? `${item.title.slice(0, 80)}…` : item.title}»? Новые задачи создаваться не будут. Уже выданные задачи останутся у сотрудников.`,
+        ))
+      )
+        return;
+      setPending(item.id);
+      setError("");
+      setNotice("");
+      const body = JSON.stringify({
+        version: item.version,
+        ...(action === "toggle" ? { enabled: !item.enabled } : {}),
+      });
+      const signature = `${action}:${body}`;
+      if (retries.current.get(item.id)?.signature !== signature)
+        retries.current.set(item.id, { signature, key: crypto.randomUUID() });
+      const saved = await request<Template>(`automatic-tasks/${item.id}/`, {
+        method: action === "delete" ? "DELETE" : "PATCH",
+        body,
+        headers: { "Idempotency-Key": retries.current.get(item.id)!.key },
+      });
+      retries.current.delete(item.id);
+      setItems((current) =>
+        action === "delete"
+          ? current.filter((value) => value.id !== item.id)
+          : current.map((value) => (value.id === item.id ? saved : value)),
+      );
+      setNotice(
+        action === "delete"
+          ? "Автозадача удалена. Уже выданные задачи сохранены."
+          : saved.enabled
+            ? "Автосоздание включено для следующих смен."
+            : "Автосоздание выключено. Уже выданные задачи сохранены.",
+      );
+      haptic("success");
+    } catch (err) {
+      setError((err as Error).message);
+      haptic("error");
+    } finally {
+      setPending(null);
+      running.current = false;
+    }
+  };
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -65,33 +141,48 @@ export function AutomaticTasksPage({
   }, [reload]);
   return (
     <section className="cp-form-page automatic-tasks">
-      <button className="cp-back" onClick={onBack}>
+      <button className="cp-back" onClick={onBack} disabled={pending !== null}>
         <IconArrowLeft size={18} />
-        Назад в «Ещё»
+        {editing === undefined ? "Назад в «Ещё»" : "Назад к списку"}
       </button>
       <div className="cp-page-heading">
         <h1>Автоматические задачи</h1>
-        {editing === undefined && (
+      </div>
+      <p className="automatic-tasks-intro">
+        {editing === undefined
+          ? "Задачи для каждой смены. Администратор отправляет их на проверку перед закрытием — ждать принятия не требуется."
+          : "Настройте задачу и требования к выполнению. Изменения применятся к следующим сменам."}
+      </p>
+      {editing === undefined && (
+        <div className="automatic-tasks-toolbar">
           <button
             className="cp-button cp-button-primary"
-            onClick={() => setEditing(null)}
+            onClick={() => {
+              setNotice("");
+              setEditing(null);
+            }}
+            disabled={pending !== null || loading}
           >
             <IconPlus size={18} />
             Создать автозадачу
           </button>
-        )}
-      </div>
-      <p className="cp-field-hint">
-        Задачи создаются при открытии подходящей смены. Перед её закрытием их
-        нужно отправить на проверку; ждать принятия не требуется. Изменения
-        шаблонов применяются к следующим сменам.
-      </p>
+          <p className="cp-field-hint">
+            Включайте и выключайте автосоздание прямо в списке.
+          </p>
+        </div>
+      )}
+      {notice && (
+        <p className="automatic-tasks-notice" role="status">
+          {notice}
+        </p>
+      )}
       {error && (
         <div role="alert" className="cp-inline-error">
           {error}{" "}
           <button
             className="cp-button cp-button-secondary"
             onClick={() => setReload((v) => v + 1)}
+            disabled={pending !== null}
           >
             Обновить список
           </button>
@@ -120,23 +211,29 @@ export function AutomaticTasksPage({
       ) : items.length ? (
         <div className="cp-records">
           {items.map((item) => (
-            <section className="automatic-template" key={item.id}>
-              <div className="cp-section-heading">
+            <section
+              className="automatic-template"
+              key={item.id}
+              aria-label={item.title}
+              aria-busy={pending === item.id}
+            >
+              <div className="automatic-template-heading">
                 <h2>{item.title}</h2>
-                {item.canEdit && (
-                  <button
-                    className="cp-button cp-button-secondary"
-                    aria-label={`Изменить: ${item.title}`}
-                    onClick={() => setEditing(item)}
-                  >
-                    <IconPencil size={17} />
-                    Изменить
-                  </button>
-                )}
+                <span
+                  className={`automatic-template-state${item.enabled ? " is-enabled" : ""}`}
+                >
+                  {item.enabled ? "Включена" : "Выключена"}
+                </span>
               </div>
-              <p>
+              <p className="automatic-template-meta">
                 {shiftNames[item.shiftType]} ·{" "}
-                {item.enabled ? "Включена" : "Выключена"}
+                {
+                  {
+                    normal: "Обычный приоритет",
+                    high: "Высокий приоритет",
+                    low: "Низкий приоритет",
+                  }[item.priority]
+                }
               </p>
               {item.description && (
                 <p className="cp-description">{item.description}</p>
@@ -147,6 +244,44 @@ export function AutomaticTasksPage({
                   ? " · Нужны фотографии выполнения"
                   : ""}
               </p>
+              <div className="automatic-template-controls">
+                <label className="automatic-template-switch">
+                  <span>Создавать автоматически</span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label={`Создавать автоматически: ${item.title}`}
+                    checked={item.enabled}
+                    disabled={!item.canEdit || pending !== null}
+                    onChange={() => void changeTemplate(item, "toggle")}
+                  />
+                </label>
+                {item.canEdit && (
+                  <div className="automatic-template-actions">
+                    <button
+                      className="cp-button cp-button-secondary"
+                      aria-label={`Изменить: ${item.title}`}
+                      disabled={pending !== null}
+                      onClick={() => {
+                        setNotice("");
+                        setEditing(item);
+                      }}
+                    >
+                      <IconPencil size={17} />
+                      Изменить
+                    </button>
+                    <button
+                      className="cp-button cp-button-secondary automatic-template-delete"
+                      aria-label={`Удалить: ${item.title}`}
+                      disabled={pending !== null}
+                      onClick={() => void changeTemplate(item, "delete")}
+                    >
+                      <IconTrash size={17} />
+                      Удалить
+                    </button>
+                  </div>
+                )}
+              </div>
             </section>
           ))}
         </div>
@@ -174,7 +309,6 @@ function TemplateForm({
   const [title, setTitle] = useState(template?.title || "");
   const [description, setDescription] = useState(template?.description || "");
   const [shiftType, setShiftType] = useState(template?.shiftType || "both");
-  const [enabled, setEnabled] = useState(template?.enabled ?? true);
   const [priority, setPriority] = useState(template?.priority || "normal");
   const [mode, setMode] = useState<PhotoMode>(
     template?.photoMode || "optional",
@@ -213,7 +347,7 @@ function TemplateForm({
           title: title.trim(),
           description: description.trim(),
           shift_type: shiftType,
-          enabled,
+          enabled: template?.enabled ?? true,
           priority,
           photo_mode: mode,
           photo_requirements: mode === "named" ? fields : [],
@@ -294,14 +428,6 @@ function TemplateForm({
               </option>
             ))}
           </select>
-        </label>
-        <label className="automatic-task-toggle">
-          <span>Создавать автоматически</span>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-          />
         </label>
         <label className="cp-field">
           Приоритет

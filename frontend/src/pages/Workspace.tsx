@@ -196,6 +196,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           "cash",
           "notification-settings",
           "automatic-tasks",
+          "automatic-task-list",
         ].includes(detail.source || "")
       )
         equipmentDraft.current = detail;
@@ -236,6 +237,10 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const [taskScope, setTaskScope] = useState<"mine" | "assigned">("mine");
   const [dirty, setDirty] = useState(false);
   const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
+  const automaticEditorBack = useRef<(() => void) | null>(null);
+  const setAutomaticEditorBack = useCallback((handler: (() => void) | null) => {
+    automaticEditorBack.current = handler;
+  }, []);
   const user = workspace.user;
   const isManager = user.role !== "admin";
   const ownsShift = user.role === "admin" && state.shift?.adminId === user.id;
@@ -272,6 +277,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       "cleaner",
       "schedule",
       "personnel",
+      "automatic-tasks",
     ].includes(view),
   );
   const navigate = useCallback((target: View) => {
@@ -302,6 +308,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     else if (form) setForm(null);
     else if (selectedTask) setSelectedTask(null);
     else if (scheduleSettingsOpen) setScheduleSettingsOpen(false);
+    else if (view === "automatic-tasks" && automaticEditorBack.current)
+      automaticEditorBack.current();
     else navigate("more");
     window.scrollTo({ top: 0 });
   }, [
@@ -311,6 +319,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     form,
     selectedTask,
     scheduleSettingsOpen,
+    view,
     navigate,
   ]);
   const openShiftHistory = () => {
@@ -823,7 +832,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                 </>
               )}
               {view === "automatic-tasks" && isManager && (
-                <AutomaticTasksPage onBack={back} onDirty={setDirty} />
+                <AutomaticTasksPage
+                  onBack={back}
+                  onDirty={setDirty}
+                  onEditorBackChange={setAutomaticEditorBack}
+                />
               )}
               {view === "photo-settings" && isManager && (
                 <PhotoSettingsPage
