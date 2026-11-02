@@ -19,6 +19,8 @@ class PhotoSettings(models.Model):
 
 
 class Shift(UserHistory):
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', editable=False, verbose_name='Закрыл смену')
+    forced_close_reason = models.TextField(blank=True, editable=False, verbose_name='Причина принудительного закрытия')
     schedule_revision = models.ForeignKey('ScheduleRevision', on_delete=models.PROTECT, null=True, blank=True, verbose_name='План при открытии')
     proposed_admin = models.JSONField(default=dict, editable=False, verbose_name='Назначенный сотрудник при открытии')
     photo_requirements = models.JSONField(default=default_report_fields, blank=True, verbose_name='Требования к фотографиям')
@@ -41,6 +43,8 @@ class Shift(UserHistory):
 
 
 class Task(UserHistory):
+    reviewers = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='review_tasks', verbose_name='Ответственные за проверку')
+    reviewer_snapshots = models.JSONField(default=list, editable=False, verbose_name='Ответственные при назначении')
     automatic_template = models.ForeignKey('AutomaticTaskTemplate', on_delete=models.PROTECT, null=True, blank=True, related_name='tasks', verbose_name='Шаблон автоматической задачи')
     required_for_shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, related_name='required_tasks', verbose_name='Обязательна для смены')
     deleted_at = models.DateTimeField(null=True, blank=True, editable=False, verbose_name="Удалена")
@@ -76,6 +80,7 @@ class Task(UserHistory):
 
 
 class AutomaticTaskTemplate(UserHistory):
+    reviewers = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name='automatic_task_reviews', verbose_name='Ответственные за проверку')
     deleted_at = models.DateTimeField(null=True, blank=True, editable=False, verbose_name='Удалена')
     creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Постановщик')
     title = models.CharField(max_length=200, verbose_name='Название')
@@ -169,7 +174,7 @@ class TelegramNotification(UserHistory):
     schedule = models.ForeignKey('SchedulePeriod', on_delete=models.PROTECT, null=True, blank=True, verbose_name='График')
     kind = models.CharField(max_length=16, default='task', choices=[('task', 'Задача на проверке'), ('task_assigned', 'Новая задача'), ('shift_open', 'Открытие смены'), ('shift_close', 'Закрытие смены'), ('expense', 'Расход'), ('cleaner', 'Уборщица'), ('schedule', 'Итоговый график')], verbose_name='Событие')
     message = models.TextField(blank=True, verbose_name='Текст уведомления')
-    submission = models.OneToOneField(TaskSubmission, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Выполнение задачи')
+    submission = models.ForeignKey(TaskSubmission, on_delete=models.PROTECT, null=True, blank=True, related_name='notifications', verbose_name='Выполнение задачи')
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, null=True, blank=True, verbose_name='Смена')
     expense = models.ForeignKey('reports.Expenses', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Расход')
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='Получатель')
@@ -198,6 +203,7 @@ class TelegramNotification(UserHistory):
             models.CheckConstraint(condition=Q(kind='schedule') | Q(schedule_delivery__isnull=True), name='schedule_delivery_notification_kind'),
             models.UniqueConstraint(fields=['expense', 'recipient'], condition=Q(kind='expense'), name='unique_expense_recipient'),
             models.UniqueConstraint(fields=['task', 'recipient'], condition=Q(kind='task_assigned'), name='unique_assignment_recipient'),
+            models.UniqueConstraint(fields=['submission', 'recipient'], condition=Q(submission__isnull=False), name='unique_submission_recipient'),
         ]
 
 

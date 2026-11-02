@@ -7,7 +7,7 @@ from rest_framework.exceptions import APIException, PermissionDenied
 
 from reports.models import CashRegister, ExpensePhoto, Expenses, Report, ReportPhoto
 from .models import Activity, CleanerVisit, PhotoSettings, Shift, ShiftExpense, Task, TaskSubmission, TaskSubmissionPhoto, TelegramNotification
-from .permissions import person, role
+from .permissions import can_review, person, review_recipients, role
 from .notifications import MOSCOW, queue_management, queue_task_assigned
 from .photos import uploaded_photos, validate_photos
 from .scheduling import resolve_schedule_date
@@ -61,37 +61,51 @@ def open_shift(user, data):
 
 
 @transaction.atomic
-def close_shift(user, pk, data):
+def close_shift(user, pk, data, *, forced=False):
     lock_register(user)
-    shift = own_shift(user)
+    if forced:
+        if role(user) == 'admin':
+            raise PermissionDenied('Принудительно закрывать смены могут только управляющие и суперпользователи.')
+        if not data.get('reason', '').strip() or data.get('confirmed') is not True:
+            raise Conflict('Укажите причину и подтвердите принудительное закрытие.')
+        shift = Shift.objects.select_for_update().filter(pk=pk, closed_at__isnull=True).first()
+        if shift is None:
+            raise Conflict('Эта смена уже закрыта. Обновите приложение.')
+    else:
+        shift = own_shift(user)
     if str(shift.pk) != str(pk):
         raise Conflict('Эта смена больше не является вашей текущей сменой.')
     pending = list(Task.objects.filter(required_for_shift=shift).exclude(
         status__in=[Task.Status.MODERATION, Task.Status.ACCEPTED],
     ).values_list('title', flat=True))
-    if pending:
+    if pending and not forced:
         raise Conflict('Перед закрытием смены отправьте обязательные задачи на проверку: ' + ', '.join(pending))
     photos = uploaded_photos(data, [
         ('desk_photo', 'desk', 'Стол администратора'),
         ('receipt_photo', 'receipt', 'Чек закрытия смены'),
         ('additional_photo', 'additional', 'Дополнительное фото'),
     ])
-    validate_photos(photos, 'named', shift.photo_requirements)
+    validate_photos(photos, 'named', [dict(field, required=False) for field in shift.photo_requirements] if forced else shift.photo_requirements)
     report = Report.objects.create(
-        admin=user, shift=shift.shift_type, date=shift.schedule_date,
+        admin=shift.admin, user_snapshots={key: value for key, value in shift.user_snapshots.items() if key == 'admin'}, shift=shift.shift_type, date=shift.schedule_date,
         cash=data['cash'], cards=data['cards'], spb=data['sbp'],
     )
     for item in photos:
         ReportPhoto.objects.create(report=report, image=item['image'], label=item['label'])
     shift.report = report
     shift.closed_at = timezone.now()
-    shift.save(update_fields=['report', 'closed_at'])
+    shift.closed_by = user
+    shift.forced_close_reason = data['reason'].strip() if forced else ''
+    shift.save(update_fields=['report', 'closed_at', 'closed_by', 'forced_close_reason'])
     # Unfinished shift assignments remain actionable on the recipient's next shift.
     Task.objects.filter(shift=shift).exclude(status=Task.Status.ACCEPTED).update(shift=None)
-    event(user, 'Смена закрыта', f'Итого: {number_format(report.cash + report.cards + report.spb, decimal_pos=2, force_grouping=True)} ₽')
+    from .presentation import participant_name
+    title = 'Смена закрыта принудительно' if forced else 'Смена закрыта'
+    audit = f'\nЗакрыл: {person(user)["name"]}\nПричина: {shift.forced_close_reason}' if forced else ''
+    event(user, title, f'Администратор: {participant_name(shift, "admin")}\nИтого: {number_format(report.cash + report.cards + report.spb, decimal_pos=2, force_grouping=True)} ₽{audit}')
     total = report.cash + report.cards + report.spb
     amounts = '\n'.join(f'{label}: {number_format(amount, decimal_pos=2, force_grouping=True)} ₽' for label, amount in [('Наличные', report.cash), ('Карта', report.cards), ('СБП', report.spb), ('Итого', total), ('Наличные в кассе', CashRegister.objects.get(pk=1).balance)])
-    queue_management('shift_close', f'Смена закрыта\nАдминистратор: {person(user)["name"]}\nТип: {shift.get_shift_type_display()}\nВремя: {shift.closed_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}\n{amounts}', shift=shift)
+    queue_management('shift_close', f'{title}\nАдминистратор: {participant_name(shift, "admin")}\nТип: {shift.get_shift_type_display()}\nВремя: {shift.closed_at.astimezone(MOSCOW):%d/%m/%Y %H:%M}\n{amounts}{audit}', shift=shift)
     return shift
 
 
@@ -205,8 +219,8 @@ def submit_task(user, pk, data):
     task.submitted_at = timezone.now()
     task.rejection_reason = ''
     task.save(update_fields=['submission_version', 'status', 'submitted_at', 'rejection_reason'])
-    if task.creator_id:
-        TelegramNotification.objects.create(submission=submission, recipient=task.creator, next_attempt_at=timezone.now())
+    for recipient in review_recipients(task):
+        TelegramNotification.objects.create(submission=submission, recipient=recipient, next_attempt_at=timezone.now())
     event(user, 'Задача на проверке', task.title, kind='task', task=task)
     return task
 
@@ -232,8 +246,8 @@ def review_task(user, pk, data):
     task = Task.objects.select_for_update().get(pk=pk)
     if task.deleted_at:
         raise Conflict('Задача удалена.')
-    if task.assignee_id == user.pk or not (user.is_superuser or (user.is_staff and task.creator_id == user.pk)):
-        raise PermissionDenied('Проверить задачу может только её постановщик или суперпользователь.')
+    if not can_review(user, task):
+        raise PermissionDenied('Проверить задачу может назначенный ответственный, её постановщик или суперпользователь.')
     if task.status != Task.Status.MODERATION or task.submission_version != data['version']:
         raise Conflict('Эта задача сейчас не ожидает проверки.')
     submission = task.submissions.get(version=task.submission_version)

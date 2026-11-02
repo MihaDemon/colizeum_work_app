@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   IconArrowLeft,
   IconChevronLeft,
@@ -8,7 +8,8 @@ import {
   IconSend,
   IconSettings,
 } from "@tabler/icons-react";
-import { request } from "../lib/api";
+import { request as apiRequest } from "../lib/api";
+import { TrainingRequest } from "../tutorial/context";
 import { cleanerDateTime } from "../lib/format";
 import type { StaffMember } from "../lib/workspace";
 import { useDraft } from "../lib/useDraft";
@@ -20,8 +21,8 @@ import {
   type ScheduleSettings,
 } from "./ScheduleSendingSettings";
 
-type Plan = Record<string, StaffMember | null>;
-interface Period {
+export type Plan = Record<string, StaffMember | null>;
+export interface Period {
   id: string;
   start: string;
   end: string;
@@ -30,7 +31,7 @@ interface Period {
   sendAt: string;
   image: string | null;
 }
-interface Overview {
+export interface Overview {
   current: Period;
   future: Period;
   archive: Period[];
@@ -46,7 +47,7 @@ interface Actual {
   proposed: StaffMember | null;
   revision: number | null;
 }
-interface Detail extends Period {
+export interface Detail extends Period {
   viewVersion: number;
   canEdit: boolean;
   plan: Plan;
@@ -85,6 +86,7 @@ export function SchedulePage({
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
 }) {
+  const request = useContext(TrainingRequest) ?? apiRequest;
   const [overview, setOverview] = useState<Overview | null>(null);
   const [period, setPeriod] = useState<Detail | null>(null);
   const [mode, setMode] = useState<"current" | "future" | "archive">(

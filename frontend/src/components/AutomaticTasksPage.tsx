@@ -1,23 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   IconArrowLeft,
   IconPlus,
   IconPencil,
   IconTrash,
 } from "@tabler/icons-react";
-import { request } from "../lib/api";
+import { request as apiRequest } from "../lib/api";
+import { TrainingRequest } from "../tutorial/context";
 import { confirmAction, haptic } from "../lib/telegram";
 import { useDraft } from "../lib/useDraft";
 import {
   photoFieldsError,
   type PhotoMode,
   type PhotoRequirement,
+  type StaffMember,
 } from "../lib/workspace";
 import Upload from "./PhotoUpload";
 import { PhotoFieldsEditor } from "./PhotoFields";
 import "./automatic-tasks.css";
 
-interface Template {
+export interface Template {
   id: string;
   title: string;
   description: string;
@@ -30,6 +32,9 @@ interface Template {
   version: number;
   creatorName: string;
   canEdit: boolean;
+  creatorId?: string | null;
+  reviewerIds?: string[];
+  reviewers?: StaffMember[];
 }
 const shiftNames = {
   both: "Любая смена",
@@ -38,15 +43,40 @@ const shiftNames = {
 };
 
 export function AutomaticTasksPage({
+  user,
   onBack,
   onDirty,
   onEditorBackChange,
 }: {
+  user: StaffMember;
   onBack: () => void;
   onDirty: (value: boolean) => void;
   onEditorBackChange: (handler: (() => void) | null) => void;
 }) {
+  const request = useContext(TrainingRequest) ?? apiRequest;
   const [items, setItems] = useState<Template[]>([]);
+  const [reviewerChoices, setReviewerChoices] = useState<StaffMember[] | null>(
+    null,
+  );
+  const [reviewerError, setReviewerError] = useState("");
+  const [choicesRevision, setChoicesRevision] = useState(0);
+  useEffect(() => {
+    if (user.role !== "superuser") return;
+    const controller = new AbortController();
+    setReviewerChoices(null);
+    setReviewerError("");
+    void request<StaffMember[]>("automatic-tasks/reviewers/", {
+      signal: controller.signal,
+    })
+      .then((people) => {
+        if (!controller.signal.aborted) setReviewerChoices(people);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted)
+          setReviewerError((error as Error).message);
+      });
+    return () => controller.abort();
+  }, [user.role, choicesRevision]);
   const [editing, setEditing] = useState<Template | null | undefined>(
     undefined,
   );
@@ -188,8 +218,21 @@ export function AutomaticTasksPage({
           </button>
         </div>
       )}
+      {reviewerError && (
+        <p role="alert" className="cp-inline-error">
+          {reviewerError}{" "}
+          <button
+            className="cp-text-button"
+            onClick={() => setChoicesRevision((value) => value + 1)}
+          >
+            Обновить ответственных
+          </button>
+        </p>
+      )}
       {editing !== undefined ? (
         <TemplateForm
+          user={user}
+          reviewerChoices={reviewerChoices}
           key={editing?.id || "new"}
           template={editing}
           onDirty={onDirty}
@@ -225,6 +268,12 @@ export function AutomaticTasksPage({
                   {item.enabled ? "Включена" : "Выключена"}
                 </span>
               </div>
+              <p className="automatic-template-meta">
+                Ответственные за проверку:{" "}
+                {item.reviewers?.length
+                  ? item.reviewers.map((person) => person.name).join(", ")
+                  : item.creatorName}
+              </p>
               <p className="automatic-template-meta">
                 {shiftNames[item.shiftType]} ·{" "}
                 {
@@ -296,17 +345,27 @@ export function AutomaticTasksPage({
 }
 
 function TemplateForm({
+  user,
+  reviewerChoices,
   template,
   onCancel,
   onSaved,
   onDirty,
 }: {
+  user: StaffMember;
+  reviewerChoices: StaffMember[] | null;
   template: Template | null;
   onCancel: () => void;
   onSaved: (template: Template) => void;
   onDirty: (dirty: boolean) => void;
 }) {
+  const request = useContext(TrainingRequest) ?? apiRequest;
   const [title, setTitle] = useState(template?.title || "");
+  const [reviewerIds, setReviewerIds] = useState<string[]>(
+    template?.reviewerIds?.length
+      ? template.reviewerIds
+      : [template?.creatorId || user.id],
+  );
   const [description, setDescription] = useState(template?.description || "");
   const [shiftType, setShiftType] = useState(template?.shiftType || "both");
   const [priority, setPriority] = useState(template?.priority || "normal");
@@ -334,6 +393,19 @@ function TemplateForm({
       onSubmit={async (event) => {
         event.preventDefault();
         if (busy) return;
+        if (
+          user.role === "superuser" &&
+          (!reviewerChoices ||
+            !reviewerIds.length ||
+            reviewerIds.some(
+              (id) => !reviewerChoices.some((person) => person.id === id),
+            ))
+        ) {
+          setError(
+            "Выберите хотя бы одного активного ответственного за проверку.",
+          );
+          return;
+        }
         const validation =
           mode === "named"
             ? photoFieldsError(fields) ||
@@ -344,6 +416,9 @@ function TemplateForm({
           return;
         }
         const values = {
+          ...(user.role === "superuser"
+            ? { reviewer_ids: reviewerIds.map(Number) }
+            : {}),
           title: title.trim(),
           description: description.trim(),
           shift_type: shiftType,
@@ -395,6 +470,44 @@ function TemplateForm({
       }}
     >
       <fieldset className="cp-workspace-controls" disabled={busy}>
+        {user.role === "superuser" && (
+          <fieldset className="automatic-reviewers">
+            <legend>Ответственные за проверку</legend>
+            <p className="cp-field-hint">
+              Выберите одного или нескольких управляющих или суперпользователей.
+              Каждый сможет принять задачу или вернуть её на доработку.
+              Изменения применятся к следующим сменам.
+            </p>
+            {reviewerChoices === null ? (
+              <p role="status">Загружаем ответственных…</p>
+            ) : (
+              reviewerChoices.map((person) => (
+                <label key={person.id}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Ответственный: ${person.name}`}
+                    checked={reviewerIds.includes(person.id)}
+                    onChange={(event) => {
+                      setReviewerIds(
+                        event.target.checked
+                          ? [...reviewerIds, person.id]
+                          : reviewerIds.filter((id) => id !== person.id),
+                      );
+                      changed();
+                    }}
+                  />
+                  <span>
+                    {person.name}
+                    {person.id === user.id ? " · Вы" : ""} ·{" "}
+                    {person.role === "superuser"
+                      ? "Суперпользователь"
+                      : "Управляющий"}
+                  </span>
+                </label>
+              ))
+            )}
+          </fieldset>
+        )}
         <label className="cp-field">
           Название задачи
           <input

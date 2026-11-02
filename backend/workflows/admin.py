@@ -34,6 +34,9 @@ class TaskAdmin(WorkflowAdmin):
     list_display = ['title', 'creator', 'assignee', 'status', 'created_at']
     list_filter = ['status', 'creator', 'assignee']
 
+    def get_readonly_fields(self, request, obj=None):
+        return (*super().get_readonly_fields(request, obj), 'reviewers')
+
 
 @admin.register(TelegramNotification)
 class NotificationAdmin(WorkflowAdmin):

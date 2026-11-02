@@ -34,6 +34,7 @@ router.register('shifts', work.ShiftViewSet, basename='shift')
 router.register('tasks', work.TaskViewSet, basename='task')
 urlpatterns = [
     path('automatic-tasks/', automatic_tasks.templates),
+    path('automatic-tasks/reviewers/', automatic_tasks.reviewer_choices),
     path('automatic-tasks/<int:pk>/', automatic_tasks.template_detail),
     path('cash-adjustment/', cash.adjust),
     path('notification-settings/', notification_settings.notification_settings),

@@ -39,6 +39,7 @@ import {
   IconInfoCircle,
   IconBrush,
   IconUsers,
+  IconSchool,
 } from "@tabler/icons-react";
 import { PersonnelPage } from "../components/PersonnelPage";
 import { NotificationSettings } from "../components/NotificationSettings";
@@ -104,7 +105,7 @@ type View =
   | "notifications"
   | "photo-settings"
   | "more";
-type Form = "expense" | "close" | "open" | "create" | null;
+type Form = "expense" | "close" | "force-close" | "open" | "create" | null;
 const People = createContext<StaffMember[]>([]);
 function usePeople() {
   const people = useContext(People);
@@ -128,6 +129,18 @@ export interface WorkspaceProps {
   error: string;
   perform: (action: Action) => Promise<void>;
   refresh?: () => Promise<void>;
+  onTraining?: () => void;
+  trainingInvite?: ReactNode;
+  training?: {
+    banner: ReactNode;
+    guide: ReactNode;
+    target: string;
+    onEvent: (event: string) => void;
+    onExit: () => void;
+    initialView?: "more" | "automatic-tasks" | "schedule" | "notifications";
+    allowedViews?: string[];
+    scheduleId?: string;
+  };
 }
 function Status({ status }: { status: Task["status"] }) {
   return (
@@ -211,30 +224,36 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const cleanerPrompt = useRef(false);
   const [saveError, setSaveError] = useState("");
   const [view, setView] = useState<View>(() =>
-    new URLSearchParams(location.search).has("schedule")
-      ? "schedule"
-      : new URLSearchParams(location.search).has("cleaner")
-        ? "cleaner"
-        : "shift",
+    workspace.training
+      ? workspace.training.initialView || "shift"
+      : new URLSearchParams(location.search).has("schedule")
+        ? "schedule"
+        : new URLSearchParams(location.search).has("cleaner")
+          ? "cleaner"
+          : "shift",
   );
   const [scheduleId, setScheduleId] = useState(() => {
     const id = new URLSearchParams(location.search).get("schedule");
     return id && /^[1-9]\d*$/.test(id) ? id : undefined;
   });
   const [linkedRecord, setLinkedRecord] = useState<RecordTarget | null>(() =>
-    notificationTarget(location.search),
+    workspace.training ? null : notificationTarget(location.search),
   );
   const [cleanerMonth, setCleanerMonth] = useState(
     () => new URLSearchParams(location.search).get("cleaner") || undefined,
   );
   const [form, setForm] = useState<Form>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(() =>
-    new URLSearchParams(location.search).get("task"),
+    workspace.training
+      ? null
+      : new URLSearchParams(location.search).get("task"),
   );
   const [toast, setToast] = useState("");
   const [filter, setFilter] = useState("all");
   const [historyTab, setHistoryTab] = useState("shifts");
-  const [taskScope, setTaskScope] = useState<"mine" | "assigned">("mine");
+  const [taskScope, setTaskScope] = useState<"mine" | "assigned">(
+    workspace.training ? "assigned" : "mine",
+  );
   const [dirty, setDirty] = useState(false);
   const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
   const automaticEditorBack = useRef<(() => void) | null>(null);
@@ -256,7 +275,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       ? tasks.filter((task) =>
           taskScope === "mine"
             ? task.adminId === user.id
-            : task.managerId === user.id,
+            : task.managerId === user.id || task.reviewerIds?.includes(user.id),
         )
       : tasks;
   const activeTasks = listTasks.filter((task) => task.status !== "accepted");
@@ -280,22 +299,38 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       "automatic-tasks",
     ].includes(view),
   );
-  const navigate = useCallback((target: View) => {
-    if (equipmentDraft.current.busy) return;
-    if (
-      equipmentDraft.current.dirty &&
-      !window.confirm("Выйти без сохранения изменений?")
-    )
-      return;
-    setView(target);
-    setScheduleSettingsOpen(false);
-    setLinkedRecord(null);
-    setForm(null);
-    setSelectedTask(null);
-    setFilter("all");
-    setDirty(false);
-    window.scrollTo({ top: 0 });
-  }, []);
+  const training = workspace.training;
+  const navigate = useCallback(
+    (target: View) => {
+      if (
+        training &&
+        ![
+          "shift",
+          "tasks",
+          "more",
+          "history",
+          "expenses",
+          ...(training.allowedViews || []),
+        ].includes(target)
+      )
+        return;
+      if (equipmentDraft.current.busy) return;
+      if (
+        equipmentDraft.current.dirty &&
+        !window.confirm("Выйти без сохранения изменений?")
+      )
+        return;
+      setView(target);
+      setScheduleSettingsOpen(false);
+      setLinkedRecord(null);
+      setForm(null);
+      setSelectedTask(null);
+      setFilter("all");
+      setDirty(false);
+      window.scrollTo({ top: 0 });
+    },
+    [training],
+  );
   const back = useCallback(() => {
     if (busy || equipmentDraft.current.busy) return;
     if (
@@ -310,6 +345,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     else if (scheduleSettingsOpen) setScheduleSettingsOpen(false);
     else if (view === "automatic-tasks" && automaticEditorBack.current)
       automaticEditorBack.current();
+    else if (training && !nested) training.onExit();
     else navigate("more");
     window.scrollTo({ top: 0 });
   }, [
@@ -321,6 +357,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     scheduleSettingsOpen,
     view,
     navigate,
+    training,
+    nested,
   ]);
   const openShiftHistory = () => {
     setHistoryTab("shifts");
@@ -367,7 +405,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   useEffect(() => {
     const app = telegram();
     if (!inTelegram() || !app?.isVersionAtLeast("6.1")) return;
-    if (!nested) {
+    if (!nested && !training) {
       app.BackButton.hide();
       return;
     }
@@ -377,7 +415,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       app.BackButton.offClick(back);
       app.BackButton.hide();
     };
-  }, [nested, back]);
+  }, [nested, back, training]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 4000);
@@ -389,6 +427,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       (isManager && item.kind !== "task") ||
       (isManager
         ? item.managerId === user.id ||
+          item.reviewerIds?.includes(user.id) ||
           item.actorId === user.id ||
           item.recipientId === user.id
         : item.actorId === user.id || item.recipientId === user.id),
@@ -420,7 +459,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   );
   return (
     <div
-      className={`cp-app${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord ? " cp-focused" : ""}`}
+      className={`cp-app${training ? " cp-training" : ""}${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord ? " cp-focused" : ""}`}
+      data-tutorial-target={training?.target}
       onChange={() => {
         if (form || selectedTask || view === "photo-settings") setDirty(true);
       }}
@@ -428,6 +468,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       <a className="cp-skip" href="#workspace-content">
         Перейти к содержимому
       </a>
+      {training?.banner}
       <header className="cp-header">
         <span className="cp-brand">
           COLIZEUM <span>WORK</span>
@@ -445,6 +486,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         </button>
       </header>
       <main id="workspace-content" className="cp-content">
+        {isMain &&
+          !form &&
+          !selected &&
+          !linkedRecord &&
+          workspace.trainingInvite}
         {(saveError || workspace.error) && (
           <p className="cp-inline-error" role="alert">
             {saveError || workspace.error}
@@ -488,6 +534,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     <h1>{isManager ? "Задачи" : "Текущая смена"}</h1>
                     {isManager ? (
                       <button
+                        data-tutorial="create"
                         className="cp-button cp-button-primary"
                         onClick={() => {
                           if (equipmentDraft.current.busy) return;
@@ -512,6 +559,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     {state.shift ? (
                       <section
                         className="cp-shift-summary"
+                        data-tutorial="summary"
                         aria-label={
                           isManager ? "Активная смена" : "Текущая смена"
                         }
@@ -589,6 +637,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         <p>Предыдущая смена закрыта.</p>
                         <button
                           className="cp-button cp-button-primary"
+                          data-tutorial="open"
                           onClick={() => setForm("open")}
                         >
                           <IconDoorEnter size={18} />
@@ -596,10 +645,22 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </button>
                       </section>
                     )}
+                    {isManager && state.shift && !training && (
+                      <div className="cp-shift-actions">
+                        <button
+                          className="cp-button cp-button-danger"
+                          onClick={() => setForm("force-close")}
+                        >
+                          <IconDoorExit size={18} />
+                          Принудительно закрыть смену
+                        </button>
+                      </div>
+                    )}
                     {ownsShift && (
                       <div className="cp-shift-actions">
                         <button
                           className="cp-button cp-button-secondary"
+                          data-tutorial="expense"
                           onClick={() => setForm("expense")}
                         >
                           <IconPlus size={18} />
@@ -607,6 +668,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </button>
                         <button
                           className="cp-button cp-button-secondary"
+                          data-tutorial="close"
                           disabled={requiredTasks.length > 0}
                           title={
                             requiredTasks.length
@@ -618,45 +680,48 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           <IconDoorExit size={18} />
                           Закрыть смену
                         </button>
-                        <button
-                          className="cp-button cp-button-secondary cp-cleaner-action"
-                          disabled={Boolean(state.shift?.cleanerVisitedAt)}
-                          onClick={async () => {
-                            if (cleanerPrompt.current) return;
-                            const shiftId = state.shift?.id;
-                            if (!shiftId) return;
-                            cleanerPrompt.current = true;
-                            try {
-                              if (
-                                !shiftId ||
-                                !(await confirmAction(
-                                  "Подтвердить приход уборщицы? Отметить приход можно только один раз за смену.",
-                                ))
-                              )
-                                return;
-                              await save(
-                                {
-                                  type: "MARK_CLEANER",
-                                  actorId: user.id,
-                                  shiftId,
-                                  confirmed: true,
-                                },
-                                "Приход уборщицы отмечен. Управляющие и суперпользователи получат уведомление.",
-                              );
-                            } catch {
-                              setSaveError(
-                                "Не удалось подтвердить приход уборщицы. Повторите попытку.",
-                              );
-                            } finally {
-                              cleanerPrompt.current = false;
-                            }
-                          }}
-                        >
-                          <IconBrush size={18} />
-                          {state.shift?.cleanerVisitedAt
-                            ? `Уборщица · отмечено в ${time(state.shift.cleanerVisitedAt)}`
-                            : "Уборщица"}
-                        </button>
+                        {(!training || user.role === "admin") && (
+                          <button
+                            data-tutorial="cleaner"
+                            className="cp-button cp-button-secondary cp-cleaner-action"
+                            disabled={Boolean(state.shift?.cleanerVisitedAt)}
+                            onClick={async () => {
+                              if (cleanerPrompt.current) return;
+                              const shiftId = state.shift?.id;
+                              if (!shiftId) return;
+                              cleanerPrompt.current = true;
+                              try {
+                                if (
+                                  !shiftId ||
+                                  !(await confirmAction(
+                                    "Подтвердить приход уборщицы? Отметить приход можно только один раз за смену.",
+                                  ))
+                                )
+                                  return;
+                                await save(
+                                  {
+                                    type: "MARK_CLEANER",
+                                    actorId: user.id,
+                                    shiftId,
+                                    confirmed: true,
+                                  },
+                                  "Приход уборщицы отмечен. Управляющие и суперпользователи получат уведомление.",
+                                );
+                              } catch {
+                                setSaveError(
+                                  "Не удалось подтвердить приход уборщицы. Повторите попытку.",
+                                );
+                              } finally {
+                                cleanerPrompt.current = false;
+                              }
+                            }}
+                          >
+                            <IconBrush size={18} />
+                            {state.shift?.cleanerVisitedAt
+                              ? `Уборщица · отмечено в ${time(state.shift.cleanerVisitedAt)}`
+                              : "Уборщица"}
+                          </button>
+                        )}
                       </div>
                     )}
                     {ownsShift && requiredTasks.length > 0 && (
@@ -671,15 +736,16 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       Задачи для администраторов и управляющих
                     </p>
                   )}
-                  <section className="cp-checklist">
+                  <section className="cp-checklist" data-tutorial="tasks">
                     {user.role === "manager" && (
                       <div
                         className="cp-task-scope"
+                        data-tutorial="scope"
                         aria-label="Исполнитель и постановщик"
                       >
                         {[
                           ["mine", "Мои задачи"],
-                          ["assigned", "Поставленные мной"],
+                          ["assigned", "Задачи команды"],
                         ].map(([scope, label]) => (
                           <button
                             key={scope}
@@ -732,6 +798,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         )
                           return;
                         setSelectedTask(id);
+                        training?.onEvent(`task-opened:${id}`);
                         setDirty(false);
                         window.scrollTo({ top: 0 });
                       }}
@@ -819,6 +886,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     ].map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
+                        disabled={Boolean(
+                          training &&
+                          ![
+                            "history",
+                            "expenses",
+                            ...(training.allowedViews || []),
+                          ].includes(id),
+                        )}
                         onClick={() =>
                           id === "history" ? openShiftHistory() : navigate(id)
                         }
@@ -828,11 +903,19 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         <IconChevronRight size={18} />
                       </button>
                     ))}
+                    {workspace.onTraining && !training && (
+                      <button onClick={workspace.onTraining}>
+                        <IconSchool size={21} stroke={1.5} />
+                        <span>Обучение</span>
+                        <IconChevronRight size={18} />
+                      </button>
+                    )}
                   </div>
                 </>
               )}
               {view === "automatic-tasks" && isManager && (
                 <AutomaticTasksPage
+                  user={user}
                   onBack={back}
                   onDirty={setDirty}
                   onEditorBackChange={setAutomaticEditorBack}
@@ -878,7 +961,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   user={user}
                   settingsOpen={scheduleSettingsOpen}
                   onSettingsOpenChange={setScheduleSettingsOpen}
-                  initialId={scheduleId}
+                  initialId={training?.scheduleId || scheduleId}
                   onBack={back}
                   onDirty={setDirty}
                   onOpenShift={(id, periodId) => {
@@ -995,7 +1078,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     state.shifts
                       .filter((s) => isManager || s.adminId === user.id)
                       .map((shift) => (
-                        <details className="cp-history-row" key={shift.id}>
+                        <details
+                          className="cp-history-row"
+                          key={shift.id}
+                          onToggle={(event) => {
+                            if (event.currentTarget.open)
+                              training?.onEvent("report-opened");
+                          }}
+                        >
                           <summary>
                             <span>
                               <strong>
@@ -1027,6 +1117,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                             <IconChevronDown size={18} />
                           </summary>
                           <div className="cp-history-details">
+                            {shift.forcedCloseReason && (
+                              <p className="cp-force-audit">
+                                Принудительно закрыл:{" "}
+                                {shift.closedBy || "Сотрудник"}. Причина:{" "}
+                                {shift.forcedCloseReason}
+                              </p>
+                            )}
                             <span>
                               Наличные<strong>{money(shift.cash || 0)}</strong>
                             </span>
@@ -1092,6 +1189,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           )}
         </fieldset>
       </main>
+      {training?.guide}
       {!form && !selected && !linkedRecord && (
         <nav className="cp-bottom-nav" aria-label="Основная навигация">
           <button
@@ -1108,6 +1206,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           </button>
           <button
             aria-current={view === "devices" ? "page" : undefined}
+            disabled={Boolean(training)}
             className={view === "devices" ? "cp-nav-active" : ""}
             onClick={() => navigate("devices")}
           >
@@ -1115,6 +1214,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
             <span>Устройства</span>
           </button>
           <button
+            data-tutorial="more"
             aria-current={
               view === "more" || (!isMain && view !== "devices")
                 ? "page"
@@ -1240,7 +1340,11 @@ function TaskDetails({
     (task.status === "active" || task.status === "rejected");
   const canReview =
     task.adminId !== user.id &&
-    (task.managerId === user.id || user.role === "superuser") &&
+    (user.role === "superuser" ||
+      (user.role === "manager" &&
+        (task.reviewers?.length
+          ? task.reviewerIds?.includes(user.id)
+          : task.managerId === user.id))) &&
     task.status === "moderation";
   return (
     <div className="cp-form-page">
@@ -1262,6 +1366,12 @@ function TaskDetails({
         <p className="cp-field-hint">
           Автоматическая задача смены. Для закрытия смены достаточно отправить
           выполнение на проверку.
+        </p>
+      )}
+      {Boolean(task.reviewers?.length) && (
+        <p className="cp-field-hint">
+          Ответственные за проверку:{" "}
+          {task.reviewers!.map((person) => person.name).join(", ")}
         </p>
       )}
       {!task.requiredForShiftId &&
@@ -1338,11 +1448,13 @@ function TaskDetails({
               <div>
                 <strong>На проверке</strong>
                 <p>
-                  {user.role === "admin"
-                    ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}. Она останется здесь до принятия.`
-                    : user.id === task.adminId
-                      ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}.`
-                      : "Проверьте фотографии и комментарий, затем примите задачу или верните её на доработку."}
+                  {task.reviewers?.length && user.id === task.adminId
+                    ? "Результат проверит один из ответственных или суперпользователь. Задача останется в списке до принятия."
+                    : user.role === "admin"
+                      ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}. Она останется здесь до принятия.`
+                      : user.id === task.adminId
+                        ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}.`
+                        : "Проверьте фотографии и комментарий, затем примите задачу или верните её на доработку."}
                 </p>
               </div>
             </div>
@@ -1381,9 +1493,11 @@ function TaskDetails({
                     photos,
                     note,
                   },
-                  person(task.managerId).deleted
-                    ? "Задача отправлена на проверку суперпользователю."
-                    : `Задача отправлена на проверку: ${person(task.managerId).name}.`,
+                  task.reviewers?.length
+                    ? "Задача отправлена ответственным за проверку."
+                    : person(task.managerId).deleted
+                      ? "Задача отправлена на проверку суперпользователю."
+                      : `Задача отправлена на проверку: ${person(task.managerId).name}.`,
                 );
               }}
             >
@@ -1427,7 +1541,7 @@ function TaskDetails({
             </form>
           )}
           {canReview && (
-            <div className="cp-review-actions">
+            <div className="cp-review-actions" data-tutorial="review">
               {rejecting && (
                 <label className="cp-field">
                   Что нужно исправить?
@@ -1536,6 +1650,12 @@ function WorkflowForm({
   onBack: () => void;
   onSave: (action: Action, message: string) => void;
 }) {
+  const forced = kind === "force-close";
+  const closing = kind === "close" || forced;
+  const [initialShift] = useState(state.shift);
+  const targetShift = closing ? initialShift : state.shift;
+  const [forceReason, setForceReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
   const requiredTasks = blockingShiftTasks(state);
   const { person, people } = usePeople();
@@ -1560,7 +1680,7 @@ function WorkflowForm({
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [photo, setPhoto] = useState("");
   const reportPhotoFields =
-    state.shift?.photoRequirements || defaultReportPhotoFields;
+    targetShift?.photoRequirements || defaultReportPhotoFields;
   const assignees = people.filter(
     (person) =>
       !person.deleted &&
@@ -1573,12 +1693,15 @@ function WorkflowForm({
   const headings = {
     expense: "Добавить расход",
     close: "Закрыть смену",
+    "force-close": "Принудительно закрыть смену",
     open: "Открыть смену",
     create: "Создать задачу",
   };
   const subtitles = {
     expense: "Укажите сумму и причину расхода.",
     close: "Укажите выручку и приложите фотографии для закрытия смены.",
+    "force-close":
+      "Укажите фактическую выручку и причину. Фотографии необязательны; незавершённые задачи сохранятся.",
     open: "Выберите тип смены.",
     create:
       user.role === "superuser"
@@ -1646,15 +1769,26 @@ function WorkflowForm({
         },
         `${money(amount)} — расход сохранён и вычтен из кассы.`,
       );
-    } else if (kind === "close") {
-      if (requiredTasks.length) {
+    } else if (closing) {
+      if (!targetShift || state.shift?.id !== targetShift.id) {
+        setError("Смена изменилась. Вернитесь к списку и обновите данные.");
+        return;
+      }
+      if (
+        forced &&
+        (user.role === "admin" || !forceReason.trim() || !confirmed)
+      ) {
+        setError("Укажите причину и подтвердите принудительное закрытие.");
+        return;
+      }
+      if (requiredTasks.length && !forced) {
         setError(
           "Перед закрытием смены отправьте обязательные задачи на проверку: " +
             requiredTasks.map((task) => task.title).join(", "),
         );
         return;
       }
-      if (state.shift?.adminId !== user.id) {
+      if (!forced && state.shift?.adminId !== user.id) {
         setError("Закрыть смену может только открывший её администратор.");
         return;
       }
@@ -1665,6 +1799,7 @@ function WorkflowForm({
         return;
       }
       if (
+        !forced &&
         reportPhotoFields.some((field) => field.required && !photos[field.id])
       ) {
         setError(
@@ -1674,7 +1809,14 @@ function WorkflowForm({
       }
       onSave(
         {
-          type: "CLOSE_SHIFT",
+          ...(forced
+            ? {
+                type: "FORCE_CLOSE_SHIFT" as const,
+                reason: forceReason.trim(),
+                confirmed: true as const,
+              }
+            : { type: "CLOSE_SHIFT" as const }),
+          shiftId: targetShift.id,
           actorId: user.id,
           cash: parseAmount(cash),
           cards: parseAmount(cards),
@@ -1752,10 +1894,10 @@ function WorkflowForm({
       </div>
       <div className="cp-detail-layout">
         <form className="cp-form-panel" onSubmit={submit} noValidate>
-          {(kind === "open" || kind === "close") && (
+          {(kind === "open" || closing) && (
             <>
               <h2>Данные смены</h2>
-              {kind === "close" ? (
+              {closing ? (
                 <>
                   <dl className="cp-closing-shift">
                     <dt>Тип смены</dt>
@@ -1830,10 +1972,14 @@ function WorkflowForm({
                   </p>
                 ) : null)}
               <div className="cp-form-info">
-                <span>{user.name}</span>
+                <span>
+                  {closing && targetShift
+                    ? person(targetShift.adminId).name
+                    : user.name}
+                </span>
                 <span>
                   {dateLabel(
-                    (kind === "close"
+                    (closing
                       ? state.shift?.scheduleDate
                       : openingScheduleDate) || new Date().toISOString(),
                   )}
@@ -1889,9 +2035,9 @@ function WorkflowForm({
               )}
             </>
           )}
-          {kind === "close" && (
+          {closing && (
             <>
-              {requiredTasks.length > 0 && (
+              {requiredTasks.length > 0 && !forced && (
                 <p className="cp-inline-error" role="status">
                   Закрытие недоступно. Отправьте на проверку:{" "}
                   {requiredTasks.map((task) => task.title).join(", ")}.
@@ -1938,14 +2084,16 @@ function WorkflowForm({
                 Фотографии закрытия смены
               </h2>
               <p className="cp-field-hint">
-                Поля со знаком * обязательны. Общий размер фотографий — до 15
-                МБ.
+                {forced
+                  ? "Фотографии можно добавить, если они доступны."
+                  : "Поля со знаком * обязательны."}{" "}
+                Общий размер фотографий — до 15 МБ.
               </p>
               {reportPhotoFields.map((field) => (
                 <Upload
                   key={field.id}
                   label={field.label}
-                  required={field.required}
+                  required={field.required && !forced}
                   value={photos[field.id]}
                   onError={setError}
                   onChange={(url) =>
@@ -2064,6 +2212,35 @@ function WorkflowForm({
               </p>
             </div>
           )}
+          {forced && (
+            <>
+              <label className="cp-field">
+                Причина принудительного закрытия
+                <textarea
+                  aria-label="Причина принудительного закрытия"
+                  rows={3}
+                  maxLength={2000}
+                  value={forceReason}
+                  onChange={(event) => {
+                    setForceReason(event.target.value);
+                    setError("");
+                  }}
+                />
+              </label>
+              <label className="cp-force-confirm">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(event) => {
+                    setConfirmed(event.target.checked);
+                    setError("");
+                  }}
+                />
+                Подтверждаю закрытие смены с указанной выручкой. Незавершённые
+                задачи сохранятся.
+              </label>
+            </>
+          )}
           {error && (
             <p className="cp-inline-error" role="alert">
               {error}
@@ -2079,13 +2256,13 @@ function WorkflowForm({
             </button>
             <button
               className="cp-button cp-button-primary"
-              disabled={kind === "close" && requiredTasks.length > 0}
+              disabled={closing && !forced && requiredTasks.length > 0}
             >
               {kind === "expense" ? (
                 <IconPlus size={17} />
               ) : kind === "create" ? (
                 <IconClipboardCheck size={17} />
-              ) : kind === "close" ? (
+              ) : closing ? (
                 <IconDoorExit size={17} />
               ) : (
                 <IconDoorEnter size={17} />

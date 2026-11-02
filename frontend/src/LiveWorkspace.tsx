@@ -9,6 +9,8 @@ import type {
 import { ApiError, request } from "./lib/api";
 import type { User } from "./lib/types";
 import { Loading } from "./components/UI";
+import { TutorialInvite } from "./tutorial/Tutorial";
+import { readSession, storageKey } from "./tutorial/model";
 
 interface Snapshot {
   user: StaffMember;
@@ -44,7 +46,13 @@ async function attachPhotos(
   if (retain) body.append("retained_photos", JSON.stringify(retained));
 }
 
-export default function LiveWorkspace({ account }: { account: User }) {
+export default function LiveWorkspace({
+  account,
+  onTraining,
+}: {
+  account: User;
+  onTraining: () => void;
+}) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const snapshotRef = useRef<Snapshot | null>(null);
   const [error, setError] = useState("");
@@ -139,11 +147,19 @@ export default function LiveWorkspace({ account }: { account: User }) {
           if (action.scheduleDate)
             body.append("schedule_date", action.scheduleDate);
           break;
+        case "FORCE_CLOSE_SHIFT":
         case "CLOSE_SHIFT": {
           const shift = snapshotRef.current?.state.shift;
           if (!shift)
             throw new Error("Эта смена уже закрыта. Обновите приложение.");
-          path = `shifts/${shift.id}/close/`;
+          path =
+            action.type === "FORCE_CLOSE_SHIFT"
+              ? `shifts/${action.shiftId}/force-close/`
+              : `shifts/${action.shiftId || shift.id}/close/`;
+          if (action.type === "FORCE_CLOSE_SHIFT") {
+            body.append("reason", action.reason);
+            body.append("confirmed", "true");
+          }
           body.append("cash", action.cash.toFixed(2));
           body.append("cards", action.cards.toFixed(2));
           body.append("sbp", action.sbp.toFixed(2));
@@ -235,7 +251,28 @@ export default function LiveWorkspace({ account }: { account: User }) {
     );
   return (
     <Workspace
-      workspace={{ ...snapshot, account, busy, error, perform, refresh }}
+      workspace={{
+        ...snapshot,
+        account,
+        busy,
+        error,
+        perform,
+        refresh,
+        onTraining,
+        trainingInvite:
+          snapshot.user.role !== "superuser" &&
+          !readSession(
+            storageKey(account.id, snapshot.user.role),
+            snapshot.user.role,
+          ) ? (
+            <TutorialInvite
+              userId={account.id}
+              role={snapshot.user.role}
+              onStart={onTraining}
+              busy={busy}
+            />
+          ) : undefined,
+      }}
     />
   );
 }

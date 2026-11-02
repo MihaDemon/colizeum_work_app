@@ -1,0 +1,286 @@
+.tutorial-home .cp-content {
+  padding-top: max(24px, var(--safe-top, 0px));
+}
+.tutorial-home-icon {
+  display: block;
+  color: var(--cp-text);
+  margin: 28px 0 18px;
+}
+.tutorial-home h1 {
+  font-size: 30px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  max-width: 14ch;
+}
+.tutorial-home h2 {
+  font-size: 19px;
+  margin-top: 32px;
+}
+.tutorial-intro {
+  margin-top: 16px;
+  line-height: 1.65;
+}
+.tutorial-home .cp-task-scope {
+  margin-top: 24px;
+}
+.tutorial-course-picker {
+  margin-top: 24px;
+}
+.tutorial-duration {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.tutorial-outline {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0;
+}
+.tutorial-outline li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--cp-line);
+}
+.tutorial-outline li > span {
+  color: var(--cp-muted);
+  font-size: 13px;
+  width: 16px;
+}
+.tutorial-outline li > div {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tutorial-safety {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.tutorial-home-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+.tutorial-banner {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px max(22px, var(--safe-right, 0px)) 4px
+    max(22px, var(--safe-left, 0px));
+  background: var(--cp-accent);
+  color: #090a0d;
+  padding-top: calc(4px + var(--safe-top, 0px));
+}
+.tutorial-banner > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.tutorial-banner button {
+  min-width: 44px;
+  min-height: 44px;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+.tutorial-banner :focus-visible {
+  outline-color: #090a0d;
+}
+.cp-training .cp-header {
+  padding-top: 6px;
+}
+.cp-training .cp-content {
+  padding-bottom: calc(
+    var(--tutorial-guide-height, 260px) + 110px +
+      max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))
+  );
+}
+.cp-training.cp-focused .cp-content {
+  padding-bottom: calc(
+    var(--tutorial-guide-height, 260px) + 28px +
+      max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))
+  );
+}
+.tutorial-guide {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(
+    73px + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))
+  );
+  width: min(560px, 100%);
+  padding: 10px max(22px, var(--safe-right, 0px)) 16px
+    max(22px, var(--safe-left, 0px));
+  background: var(--cp-panel);
+  border-top: 1px solid var(--cp-line);
+  max-height: 48dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* While typing, leave the keyboard and the entire bottom of the viewport free. */
+.cp-training .tutorial-guide[data-editing="true"] {
+  top: calc(var(--tutorial-visible-top, 0px) + 52px + var(--safe-top, 0px));
+  bottom: auto;
+  padding: 0 max(22px, var(--safe-right, 0px)) 0
+    max(22px, var(--safe-left, 0px));
+  max-height: 44px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--cp-line);
+}
+.tutorial-guide[data-editing="true"] .tutorial-guide-top {
+  min-height: 44px;
+}
+.tutorial-guide[data-editing="true"] > :not(.tutorial-guide-top) {
+  display: none;
+}
+.cp-training:has(.tutorial-guide[data-editing="true"]) .cp-bottom-nav {
+  display: none;
+}
+.cp-training:has(.tutorial-guide[data-editing="true"]) .cp-content {
+  padding-bottom: 32px;
+}
+.cp-training:has(.tutorial-guide[data-editing="true"])
+  :is(input, textarea, select) {
+  scroll-margin-top: calc(112px + var(--safe-top, 0px));
+}
+.cp-focused .tutorial-guide {
+  bottom: 0;
+  padding-bottom: calc(
+    16px + max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px))
+  );
+}
+.tutorial-guide-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--cp-muted);
+}
+.tutorial-guide-top .cp-text-button {
+  font-size: 12px;
+  min-height: 40px;
+  padding: 0;
+}
+.tutorial-guide progress {
+  display: block;
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border: 0;
+  background: var(--cp-line);
+  margin: 0 0 14px;
+}
+.tutorial-guide progress::-webkit-progress-bar {
+  background: var(--cp-line);
+}
+.tutorial-guide progress::-webkit-progress-value {
+  background: var(--cp-accent);
+}
+.tutorial-guide progress::-moz-progress-bar {
+  background: var(--cp-accent);
+}
+.tutorial-guide h2 {
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  line-height: 1.35;
+}
+.tutorial-guide h2:focus {
+  outline: none;
+}
+.tutorial-guide p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+.tutorial-guide-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+.tutorial-guide-actions .cp-button {
+  font-size: 13px;
+  min-height: 44px;
+}
+.cp-training .cp-toast {
+  display: none;
+} /* The guide presents the successful action without covering controls. */
+.tutorial-photo {
+  min-height: 44px;
+  text-align: left;
+}
+.cp-training .cp-upload {
+  cursor: default;
+}
+.cp-training button,
+.cp-training input,
+.cp-training textarea,
+.cp-training summary {
+  scroll-margin-block: 74px calc(var(--tutorial-guide-height, 260px) + 100px);
+}
+.tutorial-invite {
+  margin-bottom: 28px;
+  padding: 18px 0;
+  border-block: 1px solid var(--cp-line);
+}
+.tutorial-invite h2 {
+  font-size: 17px;
+}
+.tutorial-invite p {
+  font-size: 13px;
+  margin-top: 6px;
+}
+.tutorial-invite > div {
+  display: flex;
+  gap: 24px;
+  margin-top: 8px;
+}
+.tutorial-invite .cp-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+}
+.cp-training[data-tutorial-target="open"] [data-tutorial="open"],
+.cp-training[data-tutorial-target="create"] [data-tutorial="create"],
+.cp-training[data-tutorial-target="expense"] [data-tutorial="expense"],
+.cp-training[data-tutorial-target="close"] [data-tutorial="close"],
+.cp-training[data-tutorial-target="summary"] [data-tutorial="summary"],
+.cp-training[data-tutorial-target="tasks"] [data-tutorial="tasks"],
+.cp-training[data-tutorial-target="scope"] [data-tutorial="scope"],
+.cp-training[data-tutorial-target="more"] [data-tutorial="more"],
+.cp-training[data-tutorial-target="review"] [data-tutorial="review"] {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 5px;
+}
+.cp-training[data-tutorial-target="cleaner"] [data-tutorial="cleaner"],
+.cp-training[data-tutorial-target="automatic-tasks"] .automatic-template-switch,
+.cp-training[data-tutorial-target="schedule"] .schedule-editor {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 5px;
+}
+.cp-training[data-tutorial-target="notifications"] .cp-telegram-options {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 5px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tutorial-banner button:hover {
+    background: #090a0d12;
+  }
+}
+@media (max-height: 600px) {
+  .tutorial-guide {
+    max-height: 38dvh;
+  }
+}
