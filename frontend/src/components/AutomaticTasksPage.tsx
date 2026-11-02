@@ -47,11 +47,13 @@ export function AutomaticTasksPage({
   onBack,
   onDirty,
   onEditorBackChange,
+  onTemplateOpened,
 }: {
   user: StaffMember;
   onBack: () => void;
   onDirty: (value: boolean) => void;
   onEditorBackChange: (handler: (() => void) | null) => void;
+  onTemplateOpened?: () => void;
 }) {
   const request = useContext(TrainingRequest) ?? apiRequest;
   const [items, setItems] = useState<Template[]>([]);
@@ -314,6 +316,7 @@ export function AutomaticTasksPage({
                       onClick={() => {
                         setNotice("");
                         setEditing(item);
+                        onTemplateOpened?.();
                       }}
                     >
                       <IconPencil size={17} />
@@ -470,6 +473,15 @@ function TemplateForm({
       }}
     >
       <fieldset className="cp-workspace-controls" disabled={busy}>
+        {user.role !== "superuser" && template && (
+          <p className="cp-field-hint">
+            Ответственные за проверку:{" "}
+            {template.reviewers?.length
+              ? template.reviewers.map((person) => person.name).join(", ")
+              : template.creatorName}
+            . Группу назначает суперпользователь.
+          </p>
+        )}
         {user.role === "superuser" && (
           <fieldset className="automatic-reviewers">
             <legend>Ответственные за проверку</legend>

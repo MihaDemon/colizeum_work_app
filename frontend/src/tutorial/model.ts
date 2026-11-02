@@ -14,7 +14,7 @@ import { createTrainingData, type TrainingData } from "./services";
 
 export type TutorialRole = "admin" | "manager";
 export type TutorialTrack = TutorialRole;
-export const tutorialVersion = 3;
+export const tutorialVersion = 4;
 export const trackNames: Record<TutorialTrack, string> = {
   admin: "Ваша первая смена",
   manager: "Работа управляющего",
@@ -33,7 +33,7 @@ export const trainingAdmin: StaffMember = {
   role: "admin",
 };
 export const trainingManager: StaffMember = {
-  id: "training-manager",
+  id: "21",
   name: "Мария Волкова",
   initials: "МВ",
   role: "manager",
@@ -42,12 +42,32 @@ export const trainingPeople = [
   trainingAdmin,
   trainingManager,
   {
-    id: "training-owner",
+    id: "22",
     name: "Руководитель",
     initials: "Р",
     role: "superuser" as const,
   },
+  {
+    id: "23",
+    name: "Анна Петрова",
+    initials: "АП",
+    role: "superuser" as const,
+  },
+  {
+    id: "24",
+    name: "Дмитрий Соколов",
+    initials: "ДС",
+    role: "manager" as const,
+  },
 ];
+export const trainingReviewerChoices = (superuser = false): StaffMember[] =>
+  trainingPeople
+    .filter((person) => person.role !== "admin")
+    .map((person) =>
+      person.id === trainingManager.id && superuser
+        ? { ...person, role: "superuser" }
+        : person,
+    );
 
 export type TutorialSection =
   TutorialRole | "automatic-tasks" | "schedule" | "notifications";
@@ -167,6 +187,22 @@ const lessonGroups: Record<
         "Теперь вы различаете личные задачи и задачи, поставленные сотрудникам.",
       target: "scope",
     },
+    {
+      title: "Закройте смену вместо администратора",
+      instruction:
+        "Телефон Алексея не работает. Нажмите на текущую смену, затем «Принудительно закрыть смену». Укажите фактическую выручку: наличные — 1 000 ₽, карта — 2 000 ₽, СБП — 500 ₽. Введите причину и подтвердите закрытие. Фото необязательны.",
+      success:
+        "Смена закрыта, в кассу добавлены 1 000 ₽. Незавершённая обязательная задача сохранилась. Следующий администратор может открыть смену.",
+      target: "summary",
+    },
+    {
+      title: "Проверьте запись о закрытии",
+      instruction:
+        "В «Ещё → История смен/задач» раскройте закрытую смену. Проверьте выручку, кто закрыл смену и причину. Отчёт остаётся за Алексеем.",
+      success:
+        "В отчёте сохранены администратор смены, закрывший сотрудник и причина. Управляющие получают уведомление о закрытии, если оно включено в личных настройках.",
+      target: "more",
+    },
   ],
   "automatic-tasks": [
     {
@@ -191,6 +227,14 @@ const lessonGroups: Record<
         "Снова включите «Создавать автоматически». Изменения шаблона и его настроек применяются к следующим сменам.",
       success:
         "Автосоздание включено. Теперь вы умеете создавать и приостанавливать обязательные задачи смены.",
+      target: "automatic-tasks",
+    },
+    {
+      title: "Проверьте ответственных за автозадачу",
+      instruction:
+        "Откройте «Изменить: Проверить зал» и найдите ответственных. Группу из управляющих и суперпользователей назначает суперпользователь. Управляющий видит назначенную группу, но не меняет её.",
+      success:
+        "Ответственные видят задачу в «Задачи команды» и получают уведомления с учётом личных настроек. Первое решение завершает проверку отправки. Новая группа применяется к следующим сменам; уже выданные задачи сохраняют прежнюю.",
       target: "automatic-tasks",
     },
   ],
@@ -257,9 +301,32 @@ export const lessons: Record<TutorialTrack, Lesson[]> = {
   ],
 };
 
+export function tutorialLessons(
+  role: TutorialTrack,
+  superuser = false,
+): Lesson[] {
+  if (role !== "manager" || !superuser) return lessons[role];
+  return lessons.manager.map((lesson) =>
+    lesson.section === "automatic-tasks" && lesson.index === 3
+      ? {
+          ...lesson,
+          title: "Назначьте ответственных за автозадачу",
+          instruction:
+            "Откройте «Изменить: Проверить зал». В ответственных выберите себя (Мария Волкова), управляющего Дмитрия Соколова и суперпользователя Анну Петрову. Оставьте выбранными эти три имени и сохраните автозадачу. Можно назначить одного или нескольких ответственных.",
+        }
+      : lesson,
+  );
+}
+
+export const currentLesson = (session: TutorialSession) =>
+  tutorialLessons(session.role, session.managementRole === "superuser")[
+    session.step
+  ];
+
 export interface TutorialSession {
   version: number;
   role: TutorialTrack;
+  managementRole: "manager" | "superuser";
   step: number;
   ready: boolean;
   state: State;
@@ -285,7 +352,10 @@ function task(overrides: Partial<Task> = {}): Task {
   };
 }
 
-export function createSession(role: TutorialTrack): TutorialSession {
+export function createSession(
+  role: TutorialTrack,
+  managementRole: "manager" | "superuser" = "manager",
+): TutorialSession {
   const now = new Date();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Moscow",
@@ -316,7 +386,7 @@ export function createSession(role: TutorialTrack): TutorialSession {
               title: "Проверить расходные материалы",
               description:
                 "Проверьте запас чековой ленты и средств для уборки.",
-              managerId: "training-owner",
+              managerId: "22",
               adminId: trainingManager.id,
               requiresPhoto: false,
               photoMode: "optional",
@@ -331,6 +401,7 @@ export function createSession(role: TutorialTrack): TutorialSession {
   return {
     version: tutorialVersion,
     role,
+    managementRole,
     step: 0,
     ready: role === "manager",
     state,
@@ -364,6 +435,17 @@ export function advance(session: TutorialSession): TutorialSession {
       submittedAt: new Date().toISOString(),
       submissionVersion: next.step === 2 ? 1 : 2,
     });
+  }
+  if (next.role === "manager" && next.step === 6) {
+    next.state.tasks.push(
+      task({
+        id: "training-unfinished",
+        title: "Проверить склад",
+        automatic: true,
+        requiredForShiftId: "training-shift",
+        shiftId: "training-shift",
+      }),
+    );
   }
   next.checkpoints[next.step] = structuredClone({
     state: next.state,
@@ -404,7 +486,15 @@ export function applyTrainingAction(
           "MARK_CLEANER",
           "CLOSE_SHIFT",
         ]
-      : [null, "CREATE_TASK", null, "REVIEW_TASK", "REVIEW_TASK"];
+      : [
+          null,
+          "CREATE_TASK",
+          null,
+          "REVIEW_TASK",
+          "REVIEW_TASK",
+          null,
+          "FORCE_CLOSE_SHIFT",
+        ];
   if (session.ready || action.type !== expected[session.step])
     throw new Error(
       "Сейчас выполните действие из подсказки обучения. Остальные действия можно попробовать после выхода.",
@@ -417,6 +507,43 @@ export function applyTrainingAction(
   const state = next.state;
   const now = new Date().toISOString();
   switch (action.type) {
+    case "FORCE_CLOSE_SHIFT": {
+      if (
+        !state.shift ||
+        state.shift.id !== action.shiftId ||
+        !action.confirmed ||
+        !action.reason.trim()
+      )
+        throw new Error(
+          "Укажите причину и подтвердите закрытие текущей смены.",
+        );
+      if (action.cash !== 1000 || action.cards !== 2000 || action.sbp !== 500)
+        throw new Error(
+          "Введите учебную выручку: наличные 1 000 ₽, карта 2 000 ₽, СБП 500 ₽.",
+        );
+      state.shifts.push({
+        ...state.shift,
+        closedAt: now,
+        cash: action.cash,
+        cards: action.cards,
+        sbp: action.sbp,
+        photos: {},
+        closedBy: trainingManager.name,
+        forcedCloseReason: action.reason.trim(),
+      });
+      for (const task of state.tasks) {
+        if (
+          task.requiredForShiftId === state.shift.id &&
+          task.status !== "accepted"
+        ) {
+          task.requiredForShiftId = undefined;
+          task.shiftId = undefined;
+        }
+      }
+      state.balance += action.cash;
+      state.shift = null;
+      break;
+    }
     case "MARK_CLEANER":
       if (
         !state.shift ||
@@ -562,7 +689,14 @@ export function observeTraining(
       event === "task-opened:training-task") ||
     (session.role === "manager" &&
       session.step === 5 &&
-      event === "task-opened:training-personal");
+      event === "task-opened:training-personal") ||
+    (session.role === "manager" &&
+      session.step === 7 &&
+      event === "report-opened") ||
+    (session.managementRole !== "superuser" &&
+      currentLesson(session)?.section === "automatic-tasks" &&
+      currentLesson(session)?.index === 3 &&
+      event === "template-opened");
   return complete && !session.ready ? { ...session, ready: true } : session;
 }
 
@@ -624,7 +758,9 @@ function validState(state: State): boolean {
     Array.isArray(state.tasks) &&
     state.tasks.every(
       (task) =>
-        ["training-task", "training-personal"].includes(task?.id) &&
+        ["training-task", "training-personal", "training-unfinished"].includes(
+          task?.id,
+        ) &&
         typeof task.title === "string" &&
         typeof task.description === "string" &&
         ["active", "moderation", "accepted", "rejected"].includes(
@@ -652,12 +788,14 @@ function validState(state: State): boolean {
 export function readSession(
   key: string,
   role: TutorialTrack,
+  managementRole: "manager" | "superuser" = "manager",
 ): TutorialSession | null {
   try {
     const value = JSON.parse(localStorage.getItem(key) || "null");
     if (
       value?.version !== tutorialVersion ||
       value.role !== role ||
+      value.managementRole !== managementRole ||
       !Number.isInteger(value.step) ||
       value.step < 0 ||
       value.step > lessons[role].length ||

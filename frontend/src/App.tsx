@@ -9,7 +9,10 @@ import { Tutorial, TutorialPreview } from "./tutorial/Tutorial";
 
 export default function App() {
   const preview = new URLSearchParams(location.search).get("tutorial");
-  if (import.meta.env.DEV && (preview === "admin" || preview === "manager"))
+  if (
+    import.meta.env.DEV &&
+    (preview === "admin" || preview === "manager" || preview === "superuser")
+  )
     return <TutorialPreview role={preview} />;
   return <AuthenticatedApp />;
 }
