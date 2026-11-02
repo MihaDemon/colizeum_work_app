@@ -1230,7 +1230,7 @@ for (const staff of [false, true]) {
     await page.getByRole("button", { name: "Обучение", exact: true }).click();
     await expect(
       page.getByRole("heading", {
-        name: staff ? "Как управлять задачами" : "Ваша первая смена",
+        name: staff ? "Работа управляющего" : "Ваша первая смена",
         exact: true,
       }),
     ).toBeVisible();

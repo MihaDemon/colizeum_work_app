@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import {
   IconArrowLeft,
   IconPlus,
   IconPencil,
   IconTrash,
 } from "@tabler/icons-react";
-import { request } from "../lib/api";
+import { request as apiRequest } from "../lib/api";
+import { TrainingRequest } from "../tutorial/context";
 import { confirmAction, haptic } from "../lib/telegram";
 import { useDraft } from "../lib/useDraft";
 import {
@@ -17,7 +18,7 @@ import Upload from "./PhotoUpload";
 import { PhotoFieldsEditor } from "./PhotoFields";
 import "./automatic-tasks.css";
 
-interface Template {
+export interface Template {
   id: string;
   title: string;
   description: string;
@@ -46,6 +47,7 @@ export function AutomaticTasksPage({
   onDirty: (value: boolean) => void;
   onEditorBackChange: (handler: (() => void) | null) => void;
 }) {
+  const request = useContext(TrainingRequest) ?? apiRequest;
   const [items, setItems] = useState<Template[]>([]);
   const [editing, setEditing] = useState<Template | null | undefined>(
     undefined,
@@ -306,6 +308,7 @@ function TemplateForm({
   onSaved: (template: Template) => void;
   onDirty: (dirty: boolean) => void;
 }) {
+  const request = useContext(TrainingRequest) ?? apiRequest;
   const [title, setTitle] = useState(template?.title || "");
   const [description, setDescription] = useState(template?.description || "");
   const [shiftType, setShiftType] = useState(template?.shiftType || "both");

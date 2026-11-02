@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { request } from "../lib/api";
+import { useContext, useEffect, useState } from "react";
+import { request as apiRequest } from "../lib/api";
+import { TrainingRequest } from "../tutorial/context";
 import { useDraft } from "../lib/useDraft";
 import "./notification-settings.css";
 
@@ -13,13 +14,14 @@ const categories = [
   ["schedule", "Итоговый график смен"],
 ] as const;
 type Kind = (typeof categories)[number][0];
-type Preferences = Record<Kind, boolean>;
+export type Preferences = Record<Kind, boolean>;
 
 export function NotificationSettings({
   isSuperuser,
 }: {
   isSuperuser: boolean;
 }) {
+  const request = useContext(TrainingRequest) ?? apiRequest;
   const availableCategories = categories.filter(
     ([kind]) => !isSuperuser || kind !== "task_assigned",
   );

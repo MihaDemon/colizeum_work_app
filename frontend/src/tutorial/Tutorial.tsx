@@ -10,7 +10,9 @@ import Workspace from "../pages/Workspace";
 import type { User } from "../lib/types";
 import type { Action } from "../lib/workspace";
 import { initializeTelegram, inTelegram, telegram } from "../lib/telegram";
-import { TrainingPhoto } from "./context";
+import { TrainingPhoto, TrainingRequest } from "./context";
+import { trainingRequest } from "./services";
+import type { request } from "../lib/api";
 import {
   advance,
   applyTrainingAction,
@@ -27,6 +29,10 @@ import {
   writeSession,
   type TutorialRole,
   type TutorialSession,
+  type TutorialTrack,
+  availableTracks,
+  trackNames,
+  tutorialVersion,
 } from "./model";
 import "./tutorial.css";
 
@@ -43,17 +49,23 @@ export function Tutorial({
     (account.role || (account.is_staff ? "manager" : "admin")) === "admin"
       ? "admin"
       : "manager";
-  const [role, setRole] = useState(defaultRole);
-  const [session, setSession] = useState<TutorialSession | null>(null);
+  const tracks = availableTracks(account);
+  const [selectedRole, setRole] = useState<TutorialTrack>(defaultRole);
+  const role = tracks.includes(selectedRole) ? selectedRole : defaultRole;
+  const [savedSession, setSession] = useState<TutorialSession | null>(null);
+  const session =
+    savedSession?.version === tutorialVersion ? savedSession : null;
   const [storageFailed, setStorageFailed] = useState(false);
   const key = storageKey(account.id, role);
   const saved = readSession(key, role);
   const update = useCallback(
     (next: TutorialSession) => {
+      if (!availableTracks(account).includes(next.role))
+        throw new Error("Это обучение доступно только управляющим.");
       setSession(next);
       setStorageFailed(!writeSession(storageKey(account.id, next.role), next));
     },
-    [account.id],
+    [account],
   );
   const current = useRef(session);
   current.current = session;
@@ -79,6 +91,20 @@ export function Tutorial({
     [update],
   );
   const done = session?.step === lessons[role].length;
+  const localRequest: typeof request = useCallback(
+    async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
+      if (!current.current) throw new Error("Учебный сеанс завершён.");
+      if (options.signal?.aborted)
+        throw new DOMException("Aborted", "AbortError");
+      const result = trainingRequest(current.current, path, options);
+      if (result.session !== current.current) {
+        current.current = result.session;
+        update(result.session);
+      }
+      return result.value as T;
+    },
+    [update],
+  );
   useEffect(() => {
     document.documentElement.lang = "ru";
     const cleanup = initializeTelegram();
@@ -115,25 +141,29 @@ export function Tutorial({
               ? "Вы выполнили все упражнения. К любому из них можно вернуться."
               : "Знакомые экраны, учебная смена и понятные подсказки. Вы сами выполняете каждое действие."}
           </p>
-          {(preview || account.role === "superuser" || account.is_superuser) &&
-            !done && (
-              <div className="cp-task-scope" aria-label="Роль для обучения">
-                {(["admin", "manager"] as const).map((value) => (
-                  <button
-                    key={value}
-                    aria-pressed={role === value}
-                    className={role === value ? "cp-scope-selected" : ""}
-                    onClick={() => setRole(value)}
-                  >
-                    {value === "admin" ? "Администратор" : "Управляющий"}
-                  </button>
+          {tracks.length > 1 && !done && (
+            <label className="cp-field tutorial-course-picker">
+              Выберите обучение
+              <select
+                aria-label="Выберите обучение"
+                value={role}
+                onChange={(event) =>
+                  setRole(event.target.value as TutorialTrack)
+                }
+              >
+                {tracks.map((track) => (
+                  <option key={track} value={track}>
+                    {trackNames[track]}
+                  </option>
                 ))}
-              </div>
-            )}
-          <h2>
-            {role === "admin" ? "Ваша первая смена" : "Как управлять задачами"}
-          </h2>
-          <p className="tutorial-duration">6 упражнений · около 4 минут</p>
+              </select>
+            </label>
+          )}
+          <h2>{trackNames[role]}</h2>
+          <p className="tutorial-duration">
+            {lessons[role].length} упражнений · около{" "}
+            {role === "admin" ? 5 : 10} минут
+          </p>
           <ol className="tutorial-outline">
             {lessons[role].map((lesson, index) => (
               <li key={lesson.title}>
@@ -156,17 +186,21 @@ export function Tutorial({
             <button
               className="cp-button cp-button-primary"
               onClick={() =>
-                update(saved && saved.step < 6 ? saved : createSession(role))
+                update(
+                  saved && saved.step < lessons[role].length
+                    ? saved
+                    : createSession(role),
+                )
               }
             >
-              {saved && saved.step > 0 && saved.step < 6
+              {saved && saved.step > 0 && saved.step < lessons[role].length
                 ? `Продолжить с шага ${saved.step + 1}`
-                : done || saved?.step === 6
+                : done || saved?.step === lessons[role].length
                   ? "Пройти ещё раз"
                   : "Начать обучение"}
               <IconArrowRight size={18} />
             </button>
-            {saved && saved.step > 0 && saved.step < 6 && (
+            {saved && saved.step > 0 && saved.step < lessons[role].length && (
               <button
                 className="cp-text-button"
                 onClick={() => update(createSession(role))}
@@ -177,10 +211,13 @@ export function Tutorial({
             {done && (
               <button
                 className="cp-button cp-button-secondary"
-                onClick={onExit}
+                onClick={() => {
+                  setSession(null);
+                  window.scrollTo({ top: 0 });
+                }}
               >
                 {" "}
-                {preview ? "Выбрать другую роль" : "Перейти к работе"}
+                Выбрать другое обучение
               </button>
             )}
           </div>
@@ -189,45 +226,64 @@ export function Tutorial({
     );
 
   const lesson = lessons[role][session.step];
+  const section = lesson.section;
+  const sectionView =
+    section === "automatic-tasks" ||
+    section === "schedule" ||
+    section === "notifications"
+      ? section
+      : undefined;
   return (
-    <TrainingPhoto.Provider value={`${samplePhoto}?exercise=${session.step}`}>
-      <Workspace
-        key={`${role}-${session.step}`}
-        workspace={{
-          state: session.state,
-          user: role === "admin" ? trainingAdmin : trainingManager,
-          people: trainingPeople,
-          account,
-          busy: false,
-          error: "",
-          perform,
-          training: {
-            target: lesson.target,
-            onEvent: observe,
-            onExit: leave,
-            banner: (
-              <div className="tutorial-banner">
-                <span>
-                  <IconSchool size={18} />
-                  Учебный режим
-                </span>
-                <button onClick={leave} aria-label="Выйти из обучения">
-                  <IconX size={20} />
-                </button>
-              </div>
-            ),
-            guide: (
-              <Guide
-                session={session}
-                storageFailed={storageFailed}
-                onPrevious={() => update(previous(session))}
-                onNext={() => update(advance(session))}
-              />
-            ),
-          },
-        }}
-      />
-    </TrainingPhoto.Provider>
+    <TrainingRequest.Provider value={localRequest}>
+      <TrainingPhoto.Provider value={`${samplePhoto}?exercise=${session.step}`}>
+        <Workspace
+          key={`${role}-${session.step}`}
+          workspace={{
+            state: session.state,
+            user: role === "admin" ? trainingAdmin : trainingManager,
+            people: trainingPeople,
+            account,
+            busy: false,
+            error: "",
+            perform,
+            training: {
+              target: lesson.target,
+              onEvent: observe,
+              onExit: leave,
+              initialView: sectionView
+                ? lesson.index === 0
+                  ? "more"
+                  : sectionView
+                : undefined,
+              allowedViews: sectionView ? [sectionView] : [],
+              scheduleId:
+                section === "schedule" && lesson.index > 0
+                  ? "training-next"
+                  : undefined,
+              banner: (
+                <div className="tutorial-banner">
+                  <span>
+                    <IconSchool size={18} />
+                    Учебный режим
+                  </span>
+                  <button onClick={leave} aria-label="Выйти из обучения">
+                    <IconX size={20} />
+                  </button>
+                </div>
+              ),
+              guide: (
+                <Guide
+                  session={session}
+                  storageFailed={storageFailed}
+                  onPrevious={() => update(previous(session))}
+                  onNext={() => update(advance(session))}
+                />
+              ),
+            },
+          }}
+        />
+      </TrainingPhoto.Provider>
+    </TrainingRequest.Provider>
   );
 }
 
@@ -247,7 +303,69 @@ function Guide({
   const [collapsed, setCollapsed] = useState(
     () => window.matchMedia("(max-height: 700px)").matches,
   );
+  const [editing, setEditing] = useState(false);
   const lesson = lessons[session.role][session.step];
+  const total = lessons[session.role].length;
+  useEffect(() => {
+    let frame = 0;
+    let restoreTimer: number | undefined;
+    const viewport = window.visualViewport;
+    const baseline = Math.max(window.innerHeight, viewport?.height || 0);
+    const sync = () => {
+      const active = document.activeElement;
+      const focused =
+        active instanceof HTMLElement &&
+        Boolean(
+          active.closest(
+            '.cp-training input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), .cp-training textarea, .cp-training select, .cp-training [contenteditable="true"]',
+          ),
+        );
+      const compact =
+        focused || baseline - (viewport?.height || window.innerHeight) > 120;
+      cancelAnimationFrame(frame);
+      if (compact) {
+        window.clearTimeout(restoreTimer);
+        restoreTimer = undefined;
+        setEditing(true);
+      } else if (restoreTimer === undefined) {
+        // Let the tap that blurs the field finish before moving the form controls.
+        restoreTimer = window.setTimeout(() => {
+          setEditing(false);
+          restoreTimer = undefined;
+        }, 200);
+      }
+      const app = ref.current?.closest<HTMLElement>(".cp-app");
+      app?.style.setProperty(
+        "--tutorial-visible-top",
+        `${viewport?.offsetTop || 0}px`,
+      );
+      if (focused) {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() =>
+          active?.scrollIntoView({ block: "nearest", behavior: "instant" }),
+        );
+      }
+    };
+    const deferred = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(sync);
+    };
+    document.addEventListener("focusin", sync);
+    document.addEventListener("focusout", deferred);
+    viewport?.addEventListener("resize", sync);
+    viewport?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    sync();
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(restoreTimer);
+      document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", deferred);
+      viewport?.removeEventListener("resize", sync);
+      viewport?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
   useEffect(() => {
     const element = ref.current!;
     const app = element.closest<HTMLElement>(".cp-app")!;
@@ -264,19 +382,26 @@ function Guide({
     return () => observer.disconnect();
   }, []);
   return (
-    <aside className="tutorial-guide" aria-label="Подсказка обучения" ref={ref}>
+    <aside
+      className="tutorial-guide"
+      aria-label="Подсказка обучения"
+      data-editing={editing}
+      ref={ref}
+    >
       <div className="tutorial-guide-top">
-        <span>Шаг {session.step + 1} из 6</span>
+        <span>
+          Шаг {session.step + 1} из {total}
+        </span>
         <button
           className="cp-text-button"
-          onClick={() => setCollapsed(!collapsed)}
-          aria-expanded={!collapsed}
+          onClick={() => setCollapsed(editing ? false : !collapsed)}
+          aria-expanded={!collapsed && !editing}
         >
-          {collapsed ? "Показать подсказку" : "Свернуть"}
+          {collapsed || editing ? "Показать подсказку" : "Свернуть"}
         </button>
       </div>
       <progress
-        max={6}
+        max={total}
         value={session.step + Number(session.ready)}
         aria-label="Прогресс обучения"
       />
@@ -308,7 +433,7 @@ function Guide({
           disabled={!session.ready}
           onClick={onNext}
         >
-          {session.step === 5
+          {session.step === total - 1
             ? "Завершить"
             : session.role === "manager" && session.step === 0
               ? "Смена проверена"
@@ -344,10 +469,11 @@ export function TutorialInvite({
   if (hidden || dismissed) return null;
   return (
     <section className="tutorial-invite" aria-label="Знакомство с приложением">
-      <h2>
-        {role === "admin" ? "Ваша первая смена" : "Как управлять задачами"}
-      </h2>
-      <p>Попробуйте рабочие действия на учебных данных. Около 4 минут.</p>
+      <h2>{trackNames[role]}</h2>
+      <p>
+        Попробуйте рабочие действия на учебных данных. Около{" "}
+        {role === "admin" ? 5 : 10} минут.
+      </p>
       <div>
         <button className="cp-text-button" onClick={onStart} disabled={busy}>
           Начать обучение <IconArrowRight size={16} />

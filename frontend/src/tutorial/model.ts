@@ -9,9 +9,22 @@ import {
   type PhotoRequirement,
   type Task,
 } from "../lib/workspace";
+import type { User } from "../lib/types";
+import { createTrainingData, type TrainingData } from "./services";
 
 export type TutorialRole = "admin" | "manager";
-export const tutorialVersion = 1;
+export type TutorialTrack = TutorialRole;
+export const tutorialVersion = 3;
+export const trackNames: Record<TutorialTrack, string> = {
+  admin: "Ваша первая смена",
+  manager: "Работа управляющего",
+};
+export function availableTracks(account: User): TutorialTrack[] {
+  const management = account.role
+    ? account.role !== "admin"
+    : account.is_staff || account.is_superuser;
+  return management ? ["admin", "manager"] : ["admin"];
+}
 export const samplePhoto = "/tutorial/workstation.png";
 export const trainingAdmin: StaffMember = {
   id: "training-admin",
@@ -36,13 +49,20 @@ export const trainingPeople = [
   },
 ];
 
+export type TutorialSection =
+  TutorialRole | "automatic-tasks" | "schedule" | "notifications";
 export interface Lesson {
   title: string;
   instruction: string;
   success: string;
   target: string;
+  section: TutorialSection;
+  index: number;
 }
-export const lessons: Record<TutorialRole, Lesson[]> = {
+const lessonGroups: Record<
+  TutorialSection,
+  Omit<Lesson, "section" | "index">[]
+> = {
   admin: [
     {
       title: "Откройте смену",
@@ -75,6 +95,14 @@ export const lessons: Record<TutorialRole, Lesson[]> = {
       success:
         "Из учебной кассы списано 300 ₽. Расход сохранён отдельно от выручки.",
       target: "expense",
+    },
+    {
+      title: "Отметьте приход уборщицы",
+      instruction:
+        "Когда уборщица пришла, нажмите «Уборщица» и подтвердите приход. Отметить его можно один раз за свою смену.",
+      success:
+        "Время прихода сохранено. В рабочем режиме управляющие получат уведомление, а запись появится в истории уборщицы.",
+      target: "cleaner",
     },
     {
       title: "Закройте смену",
@@ -140,16 +168,104 @@ export const lessons: Record<TutorialRole, Lesson[]> = {
       target: "scope",
     },
   ],
+  "automatic-tasks": [
+    {
+      title: "Создайте автоматическую задачу",
+      instruction:
+        "В «Ещё → Автоматические задачи» создайте задачу «Проверить зал». Заполните инструкции, выберите дневную смену и одно обязательное фото.",
+      success:
+        "Шаблон включён. При открытии следующей дневной смены он создаст обязательную задачу. Для закрытия смены достаточно отправить её на проверку.",
+      target: "more",
+    },
+    {
+      title: "Приостановите автосоздание",
+      instruction:
+        "Выключите «Создавать автоматически» у учебной задачи. Это прекращает выдачу новых задач, уже выданные сохраняются.",
+      success:
+        "Автосоздание выключено. Текущие задачи сотрудников и их история сохранены.",
+      target: "automatic-tasks",
+    },
+    {
+      title: "Возобновите автосоздание",
+      instruction:
+        "Снова включите «Создавать автоматически». Изменения шаблона и его настроек применяются к следующим сменам.",
+      success:
+        "Автосоздание включено. Теперь вы умеете создавать и приостанавливать обязательные задачи смены.",
+      target: "automatic-tasks",
+    },
+  ],
+  schedule: [
+    {
+      title: "Назначьте смену вручную",
+      instruction:
+        "В «Ещё → График смен» откройте «Следующий», нажмите «Редактировать график», выберите администратора, нажмите дневную ячейку и сохраните график.",
+      success:
+        "Ручное назначение сохранено как версия №2. План и фактически отработанные смены учитываются отдельно.",
+      target: "more",
+    },
+    {
+      title: "Заполните график 2/2",
+      instruction:
+        "Редактируйте следующий график, раскройте «Автозаполнение 2/2». Оставьте четырёх сотрудников, нажмите «Заполнить 2/2», проверьте черновик и сохраните его.",
+      success:
+        "Создана версия №3. Автозаполнение сначала готовит черновик: без сохранения график не меняется.",
+      target: "schedule",
+    },
+    {
+      title: "Восстановите предыдущую версию",
+      instruction:
+        "В «Версии графика» выберите №2 и нажмите «Восстановить эту версию». Подтвердите восстановление. Фактически отработанные смены при этом сохраняются.",
+      success:
+        "Версия №2 восстановлена как новая версия №4. История назначений сохранена. Отправить график себе можно кнопкой Telegram в рабочем режиме.",
+      target: "schedule",
+    },
+  ],
+  notifications: [
+    {
+      title: "Выключите уведомление",
+      instruction:
+        "В «Ещё → Уведомления» выключите «Расходы из кассы» и нажмите «Сохранить настройки». Это отключает только сообщения бота в ваш личный чат. События остаются в приложении.",
+      success:
+        "Учебная настройка сохранена. Сообщения о расходах выключены. Настоящие настройки вашего аккаунта не изменились.",
+      target: "more",
+    },
+    {
+      title: "Включите уведомление снова",
+      instruction:
+        "Включите «Расходы из кассы» и сохраните настройки. После включения бот сообщает о новых событиях; пропущенные сообщения задним числом не отправляются.",
+      success:
+        "Уведомления о расходах снова включены. Вы прошли весь цикл работы управляющего: задачи, автозадачи, график и личные уведомления.",
+      target: "notifications",
+    },
+  ],
+};
+
+function sectionLessons(section: TutorialSection): Lesson[] {
+  return lessonGroups[section].map((lesson, index) => ({
+    ...lesson,
+    section,
+    index,
+  }));
+}
+export const lessons: Record<TutorialTrack, Lesson[]> = {
+  admin: sectionLessons("admin"),
+  manager: [
+    ...sectionLessons("manager"),
+    ...sectionLessons("automatic-tasks"),
+    ...sectionLessons("schedule"),
+    ...sectionLessons("notifications"),
+  ],
 };
 
 export interface TutorialSession {
   version: number;
-  role: TutorialRole;
+  role: TutorialTrack;
   step: number;
   ready: boolean;
   state: State;
+  data: TrainingData;
   // Checkpoints make Back restore the exercise before its action, including after reload.
-  checkpoints: State[];
+  checkpoints: { state: State; data: TrainingData }[];
 }
 
 function task(overrides: Partial<Task> = {}): Task {
@@ -169,7 +285,7 @@ function task(overrides: Partial<Task> = {}): Task {
   };
 }
 
-export function createSession(role: TutorialRole): TutorialSession {
+export function createSession(role: TutorialTrack): TutorialSession {
   const now = new Date();
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Moscow",
@@ -211,18 +327,21 @@ export function createSession(role: TutorialRole): TutorialSession {
     activity: [],
     balance: 5000,
   };
+  const data = createTrainingData(today);
   return {
     version: tutorialVersion,
     role,
     step: 0,
     ready: role === "manager",
     state,
-    checkpoints: [structuredClone(state)],
+    data,
+    checkpoints: [structuredClone({ state, data })],
   };
 }
 
 export function advance(session: TutorialSession): TutorialSession {
-  if (!session.ready || session.step >= 6) return session;
+  if (!session.ready || session.step >= lessons[session.role].length)
+    return session;
   const next = structuredClone(session);
   next.step++;
   next.ready = false;
@@ -246,7 +365,10 @@ export function advance(session: TutorialSession): TutorialSession {
       submissionVersion: next.step === 2 ? 1 : 2,
     });
   }
-  next.checkpoints[next.step] = structuredClone(next.state);
+  next.checkpoints[next.step] = structuredClone({
+    state: next.state,
+    data: next.data,
+  });
   return next;
 }
 
@@ -257,7 +379,8 @@ export function previous(session: TutorialSession): TutorialSession {
     ...session,
     step,
     ready: session.role === "manager" && step === 0,
-    state: structuredClone(session.checkpoints[step]),
+    state: structuredClone(session.checkpoints[step].state),
+    data: structuredClone(session.checkpoints[step].data),
     checkpoints: session.checkpoints.slice(0, step + 1),
   };
 }
@@ -267,6 +390,10 @@ export function applyTrainingAction(
   session: TutorialSession,
   action: Action,
 ): TutorialSession {
+  if (
+    !["admin", "manager"].includes(lessons[session.role][session.step]?.section)
+  )
+    throw new Error("Выполните действие из подсказки текущего обучения.");
   const expected =
     session.role === "admin"
       ? [
@@ -274,6 +401,7 @@ export function applyTrainingAction(
           "SUBMIT_TASK",
           "SUBMIT_TASK",
           "ADD_EXPENSE",
+          "MARK_CLEANER",
           "CLOSE_SHIFT",
         ]
       : [null, "CREATE_TASK", null, "REVIEW_TASK", "REVIEW_TASK"];
@@ -289,6 +417,15 @@ export function applyTrainingAction(
   const state = next.state;
   const now = new Date().toISOString();
   switch (action.type) {
+    case "MARK_CLEANER":
+      if (
+        !state.shift ||
+        state.shift.id !== action.shiftId ||
+        state.shift.cleanerVisitedAt
+      )
+        throw new Error("Приход уже отмечен или смена закрыта.");
+      state.shift.cleanerVisitedAt = now;
+      break;
     case "OPEN_SHIFT":
       state.shift = {
         id: "training-shift",
@@ -418,7 +555,7 @@ export function observeTraining(
 ): TutorialSession {
   const complete =
     (session.role === "admin" &&
-      session.step === 5 &&
+      session.step === 6 &&
       event === "report-opened") ||
     (session.role === "manager" &&
       session.step === 2 &&
@@ -429,7 +566,7 @@ export function observeTraining(
   return complete && !session.ready ? { ...session, ready: true } : session;
 }
 
-export function storageKey(userId: number | string, role: TutorialRole) {
+export function storageKey(userId: number | string, role: TutorialTrack) {
   return `colizeum:tutorial:${tutorialVersion}:${userId}:${role}`;
 }
 
@@ -449,7 +586,7 @@ function validPhoto(url: string): boolean {
   return (
     typeof url === "string" &&
     (url === samplePhoto ||
-      /^\/tutorial\/workstation\.png\?exercise=[0-5]$/.test(url))
+      /^\/tutorial\/workstation\.png\?exercise=\d+$/.test(url))
   );
 }
 
@@ -514,7 +651,7 @@ function validState(state: State): boolean {
 
 export function readSession(
   key: string,
-  role: TutorialRole,
+  role: TutorialTrack,
 ): TutorialSession | null {
   try {
     const value = JSON.parse(localStorage.getItem(key) || "null");
@@ -523,11 +660,15 @@ export function readSession(
       value.role !== role ||
       !Number.isInteger(value.step) ||
       value.step < 0 ||
-      value.step > 6 ||
+      value.step > lessons[role].length ||
       typeof value.ready !== "boolean" ||
       !Array.isArray(value.checkpoints) ||
       value.checkpoints.length !== value.step + 1 ||
-      !value.checkpoints.every(validState) ||
+      !value.checkpoints.every(
+        (checkpoint: { state: State; data: TrainingData }) =>
+          validState(checkpoint.state) && validData(checkpoint.data),
+      ) ||
+      !validData(value.data) ||
       !validState(value.state)
     )
       return null;
@@ -535,6 +676,41 @@ export function readSession(
   } catch {
     return null;
   }
+}
+function validData(data: TrainingData): boolean {
+  return Boolean(
+    data &&
+    data.notifications &&
+    [
+      "task_assigned",
+      "task",
+      "shift_open",
+      "shift_close",
+      "expense",
+      "cleaner",
+      "schedule",
+    ].every(
+      (kind) =>
+        typeof data.notifications[kind as keyof typeof data.notifications] ===
+        "boolean",
+    ) &&
+    Array.isArray(data.templates) &&
+    data.templates.every(
+      (t) =>
+        t.id === "training-template" &&
+        typeof t.title === "string" &&
+        typeof t.description === "string" &&
+        typeof t.enabled === "boolean" &&
+        validFields(t.photoRequirements),
+    ) &&
+    Array.isArray(data.periods) &&
+    data.periods.length === 2 &&
+    data.periods.every(
+      (p) => typeof p.id === "string" && p.plan && Array.isArray(p.revisions),
+    ) &&
+    data.plans &&
+    typeof data.plans === "object",
+  );
 }
 export function writeSession(key: string, session: TutorialSession): boolean {
   try {

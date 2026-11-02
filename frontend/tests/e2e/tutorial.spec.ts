@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 const guide = (page: Page) =>
   page.getByRole("complementary", { name: "Подсказка обучения" });
@@ -73,7 +73,7 @@ test("administrator completes a shift in training without any API calls", async 
   await page
     .getByRole("button", { name: "Закрыть задачу", exact: true })
     .click();
-  await expect(guide(page)).toContainText("На проверке");
+  await expect(page.locator(".cp-status")).toContainText("На проверке");
   await next(page);
   await page.getByRole("button", { name: /Подготовить игровые места/ }).click();
   await expect(page.locator(".cp-rework")).toContainText("Протрите коврик");
@@ -99,6 +99,12 @@ test("administrator completes a shift in training without any API calls", async 
     .click();
   await expect(page.locator(".cp-cash")).toContainText("4 700");
   await next(page);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Уборщица", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /Уборщица · отмечено/ }),
+  ).toBeDisabled();
+  await next(page);
   await page
     .getByRole("button", { name: "Закрыть смену", exact: true })
     .click();
@@ -123,7 +129,9 @@ test("administrator completes a shift in training without any API calls", async 
       exact: true,
     })
     .click();
-  await expect(guide(page)).toContainText("3 500 ₽");
+  await expect(
+    guide(page).getByRole("button", { name: "Далее", exact: true }),
+  ).toBeEnabled();
   await next(page);
   await page.getByRole("button", { name: "Ещё", exact: true }).click();
   await expect(
@@ -148,7 +156,7 @@ test("administrator completes a shift in training without any API calls", async 
   expect(errors).toEqual([]);
 });
 
-test("manager assigns, reviews, returns and accepts a task without any API calls", async ({
+test("manager completes tasks, automatic tasks, schedule and notifications in one tutorial without API calls", async ({
   page,
 }, info) => {
   const apiCalls: string[] = [];
@@ -201,6 +209,41 @@ test("manager assigns, reviews, returns and accepts a task without any API calls
   await page
     .getByRole("button", { name: /Проверить расходные материалы/ })
     .click();
+  await next(page);
+  await completeAutomaticTasks(page, info);
+  await completeSchedule(page, info);
+  await page.getByRole("button", { name: "Уведомления", exact: true }).click();
+  const expenses = page.getByRole("checkbox", {
+    name: "Расходы из кассы",
+    exact: true,
+  });
+  await expect(expenses).toBeChecked();
+  await expenses.uncheck();
+  await expect(
+    guide(page).getByRole("button", { name: "Далее", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Сохранить настройки", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Настройки сохранены");
+  await next(page);
+  await expect(expenses).not.toBeChecked();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Продолжить с шага 14", exact: true })
+    .click();
+  await expect(expenses).not.toBeChecked();
+  await expenses.check();
+  await expect(
+    guide(page).getByRole("button", { name: "Завершить", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Сохранить настройки", exact: true })
+    .click();
+  await expect(expenses).toBeChecked();
+  await page.screenshot({
+    path: info.outputPath("notifications-training.png"),
+  });
   await guide(page).getByRole("button", { name: "Завершить" }).click();
   await expect(
     page.getByRole("heading", { name: "Обучение пройдено" }),
@@ -216,7 +259,7 @@ test("training resumes after reload and Back restores the previous exercise", as
   await openShift(page);
   await page.reload();
   await page.getByRole("button", { name: "Продолжить с шага 2" }).click();
-  await expect(guide(page)).toContainText("Шаг 2 из 6");
+  await expect(guide(page)).toContainText("Шаг 2 из 7");
   await guide(page).getByRole("button", { name: "Назад", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Открыть смену", exact: true }),
@@ -265,5 +308,130 @@ test("training remains usable when local storage is unavailable", async ({
   await start(page, "admin");
   await expect(guide(page)).toContainText("Не удалось сохранить прогресс");
   await openShift(page);
-  await expect(guide(page)).toContainText("Шаг 2 из 6");
+  await expect(guide(page)).toContainText("Шаг 2 из 7");
+});
+
+test("administrators only see their course; managers can also practice the administrator workflow", async ({
+  page,
+}) => {
+  await page.goto("/?tutorial=admin");
+  await expect(
+    page.getByRole("heading", { name: "Ваша первая смена", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Выберите обучение", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Работа управляющего", exact: true }),
+  ).toHaveCount(0);
+  await page.goto("/?tutorial=manager");
+  await expect(
+    page.getByLabel("Выберите обучение", { exact: true }).locator("option"),
+  ).toHaveText(["Ваша первая смена", "Работа управляющего"]);
+  await page
+    .getByLabel("Выберите обучение", { exact: true })
+    .selectOption("admin");
+  await page
+    .getByRole("button", { name: "Начать обучение", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
+  ).toBeVisible();
+});
+
+async function completeAutomaticTasks(page: Page, info: TestInfo) {
+  await page
+    .getByRole("button", { name: "Автоматические задачи", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Создать автозадачу", exact: true })
+    .click();
+  await page
+    .getByLabel("Название автоматической задачи", { exact: true })
+    .fill("Проверить зал");
+  await page
+    .getByLabel("Инструкции автоматической задачи", { exact: true })
+    .fill("Проверьте игровые места и приложите фото.");
+  await page
+    .getByLabel("Смена автоматической задачи", { exact: true })
+    .selectOption("day");
+  await page
+    .getByLabel("Фото автоматической задачи", { exact: true })
+    .selectOption("single");
+  await page
+    .getByRole("button", { name: "Сохранить автозадачу", exact: true })
+    .click();
+  await next(page);
+  const enabled = page.getByRole("switch", {
+    name: "Создавать автоматически: Проверить зал",
+    exact: true,
+  });
+  await enabled.uncheck();
+  await expect(enabled).not.toBeChecked();
+  await next(page);
+  await enabled.check();
+  await expect(enabled).toBeChecked();
+  await page.screenshot({ path: info.outputPath("automatic-training.png") });
+  await next(page);
+}
+
+async function completeSchedule(page: Page, info: TestInfo) {
+  await page.getByRole("button", { name: "График смен", exact: true }).click();
+  await page.getByRole("button", { name: "Следующий", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Редактировать график", exact: true })
+    .click();
+  await page.locator(".schedule-grid button").first().click();
+  await page
+    .getByRole("button", { name: "Сохранить график", exact: true })
+    .click();
+  await next(page);
+  await page
+    .getByRole("button", { name: "Редактировать график", exact: true })
+    .click();
+  await page.getByText("Автозаполнение 2/2", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Заполнить 2/2", exact: true })
+    .click();
+  await expect(
+    guide(page).getByRole("button", { name: "Далее", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Сохранить график", exact: true })
+    .click();
+  await next(page);
+  await page.getByLabel("Версия графика", { exact: true }).selectOption("2");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "Восстановить эту версию", exact: true })
+    .click();
+  await expect(page.locator(".schedule-page")).toContainText("Версия 4");
+  await page.screenshot({ path: info.outputPath("schedule-training.png") });
+  await next(page);
+}
+
+test("typing moves the hint to a compact top bar and restores it after keyboard dismissal", async ({
+  page,
+}, info) => {
+  await start(page, "manager");
+  await page.getByRole("button", { name: "Смена проверена" }).click();
+  await page
+    .getByRole("button", { name: "Создать задачу", exact: true })
+    .click();
+  const field = page.getByLabel("Название задачи", { exact: true });
+  await field.fill("Учебная задача");
+  await expect(guide(page)).toHaveAttribute("data-editing", "true");
+  let rect = await guide(page).boundingBox();
+  expect(rect!.height).toBeLessThanOrEqual(44);
+  expect(rect!.y).toBeLessThan(120);
+  await page.screenshot({ path: info.outputPath("typing-hint.png") });
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: viewport.width, height: 420 });
+  await expect(guide(page)).toHaveAttribute("data-editing", "true");
+  await field.blur();
+  await expect(guide(page)).toHaveAttribute("data-editing", "true");
+  await page.setViewportSize(viewport);
+  await expect(guide(page)).toHaveAttribute("data-editing", "false");
+  rect = await guide(page).boundingBox();
+  expect(rect!.y).toBeGreaterThan(120);
 });

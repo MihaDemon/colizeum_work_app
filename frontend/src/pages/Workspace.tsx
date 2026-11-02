@@ -137,6 +137,9 @@ export interface WorkspaceProps {
     target: string;
     onEvent: (event: string) => void;
     onExit: () => void;
+    initialView?: "more" | "automatic-tasks" | "schedule" | "notifications";
+    allowedViews?: string[];
+    scheduleId?: string;
   };
 }
 function Status({ status }: { status: Task["status"] }) {
@@ -222,7 +225,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const [saveError, setSaveError] = useState("");
   const [view, setView] = useState<View>(() =>
     workspace.training
-      ? "shift"
+      ? workspace.training.initialView || "shift"
       : new URLSearchParams(location.search).has("schedule")
         ? "schedule"
         : new URLSearchParams(location.search).has("cleaner")
@@ -301,7 +304,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     (target: View) => {
       if (
         training &&
-        !["shift", "tasks", "more", "history", "expenses"].includes(target)
+        ![
+          "shift",
+          "tasks",
+          "more",
+          "history",
+          "expenses",
+          ...(training.allowedViews || []),
+        ].includes(target)
       )
         return;
       if (equipmentDraft.current.busy) return;
@@ -658,8 +668,9 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           <IconDoorExit size={18} />
                           Закрыть смену
                         </button>
-                        {!training && (
+                        {(!training || user.role === "admin") && (
                           <button
+                            data-tutorial="cleaner"
                             className="cp-button cp-button-secondary cp-cleaner-action"
                             disabled={Boolean(state.shift?.cleanerVisitedAt)}
                             onClick={async () => {
@@ -864,7 +875,12 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       <button
                         key={id}
                         disabled={Boolean(
-                          training && !["history", "expenses"].includes(id),
+                          training &&
+                          ![
+                            "history",
+                            "expenses",
+                            ...(training.allowedViews || []),
+                          ].includes(id),
                         )}
                         onClick={() =>
                           id === "history" ? openShiftHistory() : navigate(id)
@@ -932,7 +948,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   user={user}
                   settingsOpen={scheduleSettingsOpen}
                   onSettingsOpenChange={setScheduleSettingsOpen}
-                  initialId={scheduleId}
+                  initialId={training?.scheduleId || scheduleId}
                   onBack={back}
                   onDirty={setDirty}
                   onOpenShift={(id, periodId) => {

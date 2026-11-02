@@ -23,6 +23,9 @@
 .tutorial-home .cp-task-scope {
   margin-top: 24px;
 }
+.tutorial-course-picker {
+  margin-top: 24px;
+}
 .tutorial-duration {
   margin-top: 6px;
   font-size: 13px;
@@ -123,6 +126,32 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* While typing, leave the keyboard and the entire bottom of the viewport free. */
+.cp-training .tutorial-guide[data-editing="true"] {
+  top: calc(var(--tutorial-visible-top, 0px) + 52px + var(--safe-top, 0px));
+  bottom: auto;
+  padding: 0 max(22px, var(--safe-right, 0px)) 0
+    max(22px, var(--safe-left, 0px));
+  max-height: 44px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--cp-line);
+}
+.tutorial-guide[data-editing="true"] .tutorial-guide-top {
+  min-height: 44px;
+}
+.tutorial-guide[data-editing="true"] > :not(.tutorial-guide-top) {
+  display: none;
+}
+.cp-training:has(.tutorial-guide[data-editing="true"]) .cp-bottom-nav {
+  display: none;
+}
+.cp-training:has(.tutorial-guide[data-editing="true"]) .cp-content {
+  padding-bottom: 32px;
+}
+.cp-training:has(.tutorial-guide[data-editing="true"])
+  :is(input, textarea, select) {
+  scroll-margin-top: calc(112px + var(--safe-top, 0px));
+}
 .cp-focused .tutorial-guide {
   bottom: 0;
   padding-bottom: calc(
@@ -161,6 +190,7 @@
   background: var(--cp-accent);
 }
 .tutorial-guide h2 {
+  overflow-wrap: anywhere;
   font-size: 17px;
   line-height: 1.35;
 }
@@ -231,6 +261,16 @@
 .cp-training[data-tutorial-target="scope"] [data-tutorial="scope"],
 .cp-training[data-tutorial-target="more"] [data-tutorial="more"],
 .cp-training[data-tutorial-target="review"] [data-tutorial="review"] {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 5px;
+}
+.cp-training[data-tutorial-target="cleaner"] [data-tutorial="cleaner"],
+.cp-training[data-tutorial-target="automatic-tasks"] .automatic-template-switch,
+.cp-training[data-tutorial-target="schedule"] .schedule-editor {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 5px;
+}
+.cp-training[data-tutorial-target="notifications"] .cp-telegram-options {
   outline: 2px solid var(--accent-ink);
   outline-offset: 5px;
 }
