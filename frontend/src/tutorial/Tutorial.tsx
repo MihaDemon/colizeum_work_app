@@ -33,6 +33,8 @@ import {
   availableTracks,
   trackNames,
   tutorialVersion,
+  tutorialLessons,
+  currentLesson,
 } from "./model";
 import "./tutorial.css";
 
@@ -50,6 +52,10 @@ export function Tutorial({
       ? "admin"
       : "manager";
   const tracks = availableTracks(account);
+  const managementRole =
+    account.role === "superuser" || account.is_superuser
+      ? "superuser"
+      : "manager";
   const [selectedRole, setRole] = useState<TutorialTrack>(defaultRole);
   const role = tracks.includes(selectedRole) ? selectedRole : defaultRole;
   const [savedSession, setSession] = useState<TutorialSession | null>(null);
@@ -57,7 +63,8 @@ export function Tutorial({
     savedSession?.version === tutorialVersion ? savedSession : null;
   const [storageFailed, setStorageFailed] = useState(false);
   const key = storageKey(account.id, role);
-  const saved = readSession(key, role);
+  const saved = readSession(key, role, managementRole);
+  const course = tutorialLessons(role, managementRole === "superuser");
   const update = useCallback(
     (next: TutorialSession) => {
       if (!availableTracks(account).includes(next.role))
@@ -165,7 +172,7 @@ export function Tutorial({
             {role === "admin" ? 5 : 10} минут
           </p>
           <ol className="tutorial-outline">
-            {lessons[role].map((lesson, index) => (
+            {course.map((lesson, index) => (
               <li key={lesson.title}>
                 <span>{index + 1}</span>
                 <div>
@@ -189,7 +196,7 @@ export function Tutorial({
                 update(
                   saved && saved.step < lessons[role].length
                     ? saved
-                    : createSession(role),
+                    : createSession(role, managementRole),
                 )
               }
             >
@@ -203,7 +210,7 @@ export function Tutorial({
             {saved && saved.step > 0 && saved.step < lessons[role].length && (
               <button
                 className="cp-text-button"
-                onClick={() => update(createSession(role))}
+                onClick={() => update(createSession(role, managementRole))}
               >
                 Начать заново
               </button>
@@ -225,7 +232,7 @@ export function Tutorial({
       </div>
     );
 
-  const lesson = lessons[role][session.step];
+  const lesson = currentLesson(session);
   const section = lesson.section;
   const sectionView =
     section === "automatic-tasks" ||
@@ -240,7 +247,16 @@ export function Tutorial({
           key={`${role}-${session.step}`}
           workspace={{
             state: session.state,
-            user: role === "admin" ? trainingAdmin : trainingManager,
+            user:
+              role === "admin"
+                ? trainingAdmin
+                : {
+                    ...trainingManager,
+                    role:
+                      section === "automatic-tasks"
+                        ? managementRole
+                        : "manager",
+                  },
             people: trainingPeople,
             account,
             busy: false,
@@ -304,7 +320,7 @@ function Guide({
     () => window.matchMedia("(max-height: 700px)").matches,
   );
   const [editing, setEditing] = useState(false);
-  const lesson = lessons[session.role][session.step];
+  const lesson = currentLesson(session);
   const total = lessons[session.role].length;
   useEffect(() => {
     let frame = 0;
@@ -497,7 +513,11 @@ export function TutorialInvite({
 }
 
 /** Development-only entry; it never mounts authentication or the live workspace. */
-export function TutorialPreview({ role }: { role: TutorialRole }) {
+export function TutorialPreview({
+  role,
+}: {
+  role: TutorialRole | "superuser";
+}) {
   const [generation, setGeneration] = useState(0);
   const account: User = {
     id: 0,
@@ -507,7 +527,8 @@ export function TutorialPreview({ role }: { role: TutorialRole }) {
     phone_number: null,
     last_login: null,
     is_active: true,
-    is_staff: role === "manager",
+    is_staff: role !== "admin",
+    is_superuser: role === "superuser",
     role,
   };
   return (

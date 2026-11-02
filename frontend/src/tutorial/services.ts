@@ -2,7 +2,11 @@ import type { Template } from "../components/AutomaticTasksPage";
 import type { Detail, Overview, Plan } from "../components/SchedulePage";
 import type { StaffMember } from "../lib/workspace";
 import type { TutorialSession } from "./model";
-import { lessons } from "./model";
+import {
+  currentLesson,
+  trainingManager,
+  trainingReviewerChoices,
+} from "./model";
 import type { Preferences } from "../components/NotificationSettings";
 
 export const scheduleAdmins: StaffMember[] = [
@@ -95,10 +99,20 @@ export function trainingRequest(
   const parts = url.pathname.split("/").filter(Boolean);
   const next = structuredClone(session);
   const data = next.data;
-  const lesson = lessons[session.role][session.step];
+  const lesson = currentLesson(session);
   const section = lesson?.section;
   const step = lesson?.index;
   let value: unknown;
+  if (
+    method === "GET" &&
+    section === "automatic-tasks" &&
+    session.managementRole === "superuser" &&
+    path === "automatic-tasks/reviewers/"
+  )
+    return {
+      session,
+      value: trainingReviewerChoices(session.managementRole === "superuser"),
+    };
   if (
     method === "GET" &&
     section === "automatic-tasks" &&
@@ -197,8 +211,51 @@ export function trainingRequest(
         version: 1,
         creatorName: "Мария Волкова",
         canEdit: true,
+        creatorId: trainingManager.id,
+        reviewerIds: [trainingManager.id],
+        reviewers: [trainingManager],
       };
+      if (session.managementRole === "superuser") {
+        const ids = JSON.parse(String(body.get("reviewer_ids") || "[]"));
+        const choices = trainingReviewerChoices(true);
+        if (
+          !Array.isArray(ids) ||
+          !ids.length ||
+          ids.some((id) => !choices.some((person) => Number(person.id) === id))
+        )
+          throw new Error(
+            "Выберите хотя бы одного ответственного за проверку.",
+          );
+        template.reviewerIds = ids.map(String);
+        template.reviewers = choices.filter((person) =>
+          template.reviewerIds!.includes(person.id),
+        );
+      }
       data.templates.push(template);
+      value = template;
+    } else if (
+      method === "POST" &&
+      step === 3 &&
+      session.managementRole === "superuser" &&
+      parts[1] === "training-template" &&
+      options.body instanceof FormData
+    ) {
+      const ids = JSON.parse(String(options.body.get("reviewer_ids") || "[]"));
+      if (
+        !Array.isArray(ids) ||
+        ids.length !== 3 ||
+        ![21, 23, 24].every((id) => ids.includes(id))
+      )
+        throw new Error(
+          "Выберите Марию, Дмитрия и Анну и сохраните автозадачу.",
+        );
+      const template = data.templates[0];
+      if (!template) throw new Error("Сначала создайте учебную автозадачу.");
+      template.reviewerIds = ids.map(String);
+      template.reviewers = trainingReviewerChoices(true).filter((person) =>
+        template.reviewerIds!.includes(person.id),
+      );
+      template.version++;
       value = template;
     } else if (
       method === "PATCH" &&

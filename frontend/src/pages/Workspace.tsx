@@ -243,6 +243,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     () => new URLSearchParams(location.search).get("cleaner") || undefined,
   );
   const [form, setForm] = useState<Form>(null);
+  const [shiftExpanded, setShiftExpanded] = useState(false);
+  useEffect(() => setShiftExpanded(false), [state.shift?.id, view]);
   const [selectedTask, setSelectedTask] = useState<string | null>(() =>
     workspace.training
       ? null
@@ -564,7 +566,22 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           isManager ? "Активная смена" : "Текущая смена"
                         }
                       >
-                        <div>
+                        <div
+                          className={
+                            isManager ? "cp-shift-overview" : undefined
+                          }
+                        >
+                          {isManager && (
+                            <button
+                              className="cp-shift-toggle"
+                              aria-label="Текущая смена: подробности"
+                              aria-expanded={shiftExpanded}
+                              aria-controls="current-shift-details"
+                              onClick={() => setShiftExpanded(!shiftExpanded)}
+                            >
+                              <IconChevronDown size={18} />
+                            </button>
+                          )}
                           <span
                             className={`cp-live${ownsShift || isManager ? "" : " cp-live-waiting"}`}
                           >
@@ -593,7 +610,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                             <span>Наличные в кассе</span>
                             <CashBalance
                               balance={state.balance}
-                              editable={user.role === "superuser"}
+                              editable={user.role === "superuser" && !training}
                               onSaved={async () => {
                                 await workspace.refresh?.();
                                 notify("Остаток кассы обновлён.");
@@ -619,7 +636,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           <span>Наличные в кассе</span>
                           <CashBalance
                             balance={state.balance}
-                            editable={user.role === "superuser"}
+                            editable={user.role === "superuser" && !training}
                             onSaved={async () => {
                               await workspace.refresh?.();
                               notify("Остаток кассы обновлён.");
@@ -645,10 +662,22 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </button>
                       </section>
                     )}
-                    {isManager && state.shift && !training && (
-                      <div className="cp-shift-actions">
+                    {isManager && state.shift && shiftExpanded && (
+                      <div
+                        className="cp-current-shift-details"
+                        id="current-shift-details"
+                      >
+                        <p>
+                          Открыта: {dateLabel(state.shift.openedAt)} в{" "}
+                          {time(state.shift.openedAt)}
+                        </p>
+                        <p>
+                          Закройте смену здесь, если администратор забыл это
+                          сделать или не может воспользоваться телефоном.
+                        </p>
                         <button
                           className="cp-button cp-button-danger"
+                          data-tutorial="force-close"
                           onClick={() => setForm("force-close")}
                         >
                           <IconDoorExit size={18} />
@@ -919,6 +948,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                   onBack={back}
                   onDirty={setDirty}
                   onEditorBackChange={setAutomaticEditorBack}
+                  onTemplateOpened={() => training?.onEvent("template-opened")}
                 />
               )}
               {view === "photo-settings" && isManager && (

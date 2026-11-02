@@ -306,6 +306,24 @@ for (const owner of [false, true]) {
   }, info) => {
     await setup(page, { staff: !owner, owner });
     await page.goto("/");
+    const forceClose = page.getByRole("button", {
+      name: "Принудительно закрыть смену",
+      exact: true,
+    });
+    const currentShift = page.getByRole("button", {
+      name: "Текущая смена: подробности",
+      exact: true,
+    });
+    await expect(forceClose).toHaveCount(0);
+    await currentShift.click();
+    await expect(forceClose).toBeVisible();
+    await currentShift.click();
+    await expect(forceClose).toHaveCount(0);
+    await currentShift.click();
+    await page.getByRole("button", { name: "Ещё", exact: true }).click();
+    await page.getByRole("button", { name: "Задачи", exact: true }).click();
+    await expect(forceClose).toHaveCount(0);
+    await currentShift.click();
     await page
       .getByRole("button", { name: "Принудительно закрыть смену", exact: true })
       .click();
