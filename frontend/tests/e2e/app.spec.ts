@@ -1209,6 +1209,53 @@ async function setup(
   };
 }
 
+for (const staff of [false, true]) {
+  test(`training entry, Telegram back, dismissal and live refresh: ${staff ? "manager" : "admin"}`, async ({
+    page,
+  }) => {
+    const server = await setup(page, { staff });
+    await page.clock.install();
+    await page.goto("/");
+    const invitation = page.getByRole("region", {
+      name: "Знакомство с приложением",
+    });
+    await expect(invitation).toBeVisible();
+    await invitation
+      .getByRole("button", { name: "Позже", exact: true })
+      .click();
+    await page.reload();
+    await expect(page.locator(".cp-bottom-nav")).toBeVisible();
+    await expect(invitation).toHaveCount(0);
+    await page.getByRole("button", { name: "Ещё", exact: true }).click();
+    await page.getByRole("button", { name: "Обучение", exact: true }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: staff ? "Как управлять задачами" : "Ваша первая смена",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Начать обучение", exact: true })
+      .click();
+    await expect(
+      page.getByText("Учебный режим", { exact: true }),
+    ).toBeVisible();
+    const reads = server.workspaceReads();
+    await page.clock.runFor(6000);
+    expect(server.workspaceReads()).toBe(reads);
+    await page.evaluate(() =>
+      (window as unknown as { testBack: () => void }).testBack(),
+    );
+    await expect(
+      page.getByRole("heading", { name: "Попробуйте рабочий день" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Вернуться в приложение" }).click();
+    await expect(page.locator(".cp-bottom-nav")).toBeVisible();
+    expect(server.workspaceReads()).toBeGreaterThan(reads);
+    await expect(invitation).toHaveCount(0);
+  });
+}
+
 test("new tasks appear on the open page without navigation or reload", async ({
   page,
 }) => {

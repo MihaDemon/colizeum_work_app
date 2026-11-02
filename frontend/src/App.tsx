@@ -5,15 +5,25 @@ import type { User } from "./lib/types";
 import { Auth } from "./components/Auth";
 import { Loading } from "./components/UI";
 import LiveWorkspace from "./LiveWorkspace";
+import { Tutorial, TutorialPreview } from "./tutorial/Tutorial";
 
 export default function App() {
+  const preview = new URLSearchParams(location.search).get("tutorial");
+  if (import.meta.env.DEV && (preview === "admin" || preview === "manager"))
+    return <TutorialPreview role={preview} />;
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const [user, setUser] = useState<User | null>(null);
   const [authState, setAuthState] = useState("loading");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [training, setTraining] = useState(false);
   const reset = useCallback(() => {
     setToken(null);
     setUser(null);
+    setTraining(false);
     setAuthState("login");
   }, []);
   const authenticate = useCallback(
@@ -78,5 +88,7 @@ export default function App() {
         authenticate={authenticate}
       />
     );
-  return <LiveWorkspace account={user} />;
+  if (training)
+    return <Tutorial account={user} onExit={() => setTraining(false)} />;
+  return <LiveWorkspace account={user} onTraining={() => setTraining(true)} />;
 }

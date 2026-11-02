@@ -39,6 +39,7 @@ import {
   IconInfoCircle,
   IconBrush,
   IconUsers,
+  IconSchool,
 } from "@tabler/icons-react";
 import { PersonnelPage } from "../components/PersonnelPage";
 import { NotificationSettings } from "../components/NotificationSettings";
@@ -128,6 +129,15 @@ export interface WorkspaceProps {
   error: string;
   perform: (action: Action) => Promise<void>;
   refresh?: () => Promise<void>;
+  onTraining?: () => void;
+  trainingInvite?: ReactNode;
+  training?: {
+    banner: ReactNode;
+    guide: ReactNode;
+    target: string;
+    onEvent: (event: string) => void;
+    onExit: () => void;
+  };
 }
 function Status({ status }: { status: Task["status"] }) {
   return (
@@ -211,30 +221,36 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   const cleanerPrompt = useRef(false);
   const [saveError, setSaveError] = useState("");
   const [view, setView] = useState<View>(() =>
-    new URLSearchParams(location.search).has("schedule")
-      ? "schedule"
-      : new URLSearchParams(location.search).has("cleaner")
-        ? "cleaner"
-        : "shift",
+    workspace.training
+      ? "shift"
+      : new URLSearchParams(location.search).has("schedule")
+        ? "schedule"
+        : new URLSearchParams(location.search).has("cleaner")
+          ? "cleaner"
+          : "shift",
   );
   const [scheduleId, setScheduleId] = useState(() => {
     const id = new URLSearchParams(location.search).get("schedule");
     return id && /^[1-9]\d*$/.test(id) ? id : undefined;
   });
   const [linkedRecord, setLinkedRecord] = useState<RecordTarget | null>(() =>
-    notificationTarget(location.search),
+    workspace.training ? null : notificationTarget(location.search),
   );
   const [cleanerMonth, setCleanerMonth] = useState(
     () => new URLSearchParams(location.search).get("cleaner") || undefined,
   );
   const [form, setForm] = useState<Form>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(() =>
-    new URLSearchParams(location.search).get("task"),
+    workspace.training
+      ? null
+      : new URLSearchParams(location.search).get("task"),
   );
   const [toast, setToast] = useState("");
   const [filter, setFilter] = useState("all");
   const [historyTab, setHistoryTab] = useState("shifts");
-  const [taskScope, setTaskScope] = useState<"mine" | "assigned">("mine");
+  const [taskScope, setTaskScope] = useState<"mine" | "assigned">(
+    workspace.training ? "assigned" : "mine",
+  );
   const [dirty, setDirty] = useState(false);
   const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
   const automaticEditorBack = useRef<(() => void) | null>(null);
@@ -280,22 +296,31 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       "automatic-tasks",
     ].includes(view),
   );
-  const navigate = useCallback((target: View) => {
-    if (equipmentDraft.current.busy) return;
-    if (
-      equipmentDraft.current.dirty &&
-      !window.confirm("Выйти без сохранения изменений?")
-    )
-      return;
-    setView(target);
-    setScheduleSettingsOpen(false);
-    setLinkedRecord(null);
-    setForm(null);
-    setSelectedTask(null);
-    setFilter("all");
-    setDirty(false);
-    window.scrollTo({ top: 0 });
-  }, []);
+  const training = workspace.training;
+  const navigate = useCallback(
+    (target: View) => {
+      if (
+        training &&
+        !["shift", "tasks", "more", "history", "expenses"].includes(target)
+      )
+        return;
+      if (equipmentDraft.current.busy) return;
+      if (
+        equipmentDraft.current.dirty &&
+        !window.confirm("Выйти без сохранения изменений?")
+      )
+        return;
+      setView(target);
+      setScheduleSettingsOpen(false);
+      setLinkedRecord(null);
+      setForm(null);
+      setSelectedTask(null);
+      setFilter("all");
+      setDirty(false);
+      window.scrollTo({ top: 0 });
+    },
+    [training],
+  );
   const back = useCallback(() => {
     if (busy || equipmentDraft.current.busy) return;
     if (
@@ -310,6 +335,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     else if (scheduleSettingsOpen) setScheduleSettingsOpen(false);
     else if (view === "automatic-tasks" && automaticEditorBack.current)
       automaticEditorBack.current();
+    else if (training && !nested) training.onExit();
     else navigate("more");
     window.scrollTo({ top: 0 });
   }, [
@@ -321,6 +347,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     scheduleSettingsOpen,
     view,
     navigate,
+    training,
+    nested,
   ]);
   const openShiftHistory = () => {
     setHistoryTab("shifts");
@@ -367,7 +395,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   useEffect(() => {
     const app = telegram();
     if (!inTelegram() || !app?.isVersionAtLeast("6.1")) return;
-    if (!nested) {
+    if (!nested && !training) {
       app.BackButton.hide();
       return;
     }
@@ -377,7 +405,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       app.BackButton.offClick(back);
       app.BackButton.hide();
     };
-  }, [nested, back]);
+  }, [nested, back, training]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 4000);
@@ -420,7 +448,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   );
   return (
     <div
-      className={`cp-app${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord ? " cp-focused" : ""}`}
+      className={`cp-app${training ? " cp-training" : ""}${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord ? " cp-focused" : ""}`}
+      data-tutorial-target={training?.target}
       onChange={() => {
         if (form || selectedTask || view === "photo-settings") setDirty(true);
       }}
@@ -428,6 +457,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       <a className="cp-skip" href="#workspace-content">
         Перейти к содержимому
       </a>
+      {training?.banner}
       <header className="cp-header">
         <span className="cp-brand">
           COLIZEUM <span>WORK</span>
@@ -445,6 +475,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         </button>
       </header>
       <main id="workspace-content" className="cp-content">
+        {isMain &&
+          !form &&
+          !selected &&
+          !linkedRecord &&
+          workspace.trainingInvite}
         {(saveError || workspace.error) && (
           <p className="cp-inline-error" role="alert">
             {saveError || workspace.error}
@@ -488,6 +523,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     <h1>{isManager ? "Задачи" : "Текущая смена"}</h1>
                     {isManager ? (
                       <button
+                        data-tutorial="create"
                         className="cp-button cp-button-primary"
                         onClick={() => {
                           if (equipmentDraft.current.busy) return;
@@ -512,6 +548,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     {state.shift ? (
                       <section
                         className="cp-shift-summary"
+                        data-tutorial="summary"
                         aria-label={
                           isManager ? "Активная смена" : "Текущая смена"
                         }
@@ -589,6 +626,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         <p>Предыдущая смена закрыта.</p>
                         <button
                           className="cp-button cp-button-primary"
+                          data-tutorial="open"
                           onClick={() => setForm("open")}
                         >
                           <IconDoorEnter size={18} />
@@ -600,6 +638,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       <div className="cp-shift-actions">
                         <button
                           className="cp-button cp-button-secondary"
+                          data-tutorial="expense"
                           onClick={() => setForm("expense")}
                         >
                           <IconPlus size={18} />
@@ -607,6 +646,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </button>
                         <button
                           className="cp-button cp-button-secondary"
+                          data-tutorial="close"
                           disabled={requiredTasks.length > 0}
                           title={
                             requiredTasks.length
@@ -618,45 +658,47 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                           <IconDoorExit size={18} />
                           Закрыть смену
                         </button>
-                        <button
-                          className="cp-button cp-button-secondary cp-cleaner-action"
-                          disabled={Boolean(state.shift?.cleanerVisitedAt)}
-                          onClick={async () => {
-                            if (cleanerPrompt.current) return;
-                            const shiftId = state.shift?.id;
-                            if (!shiftId) return;
-                            cleanerPrompt.current = true;
-                            try {
-                              if (
-                                !shiftId ||
-                                !(await confirmAction(
-                                  "Подтвердить приход уборщицы? Отметить приход можно только один раз за смену.",
-                                ))
-                              )
-                                return;
-                              await save(
-                                {
-                                  type: "MARK_CLEANER",
-                                  actorId: user.id,
-                                  shiftId,
-                                  confirmed: true,
-                                },
-                                "Приход уборщицы отмечен. Управляющие и суперпользователи получат уведомление.",
-                              );
-                            } catch {
-                              setSaveError(
-                                "Не удалось подтвердить приход уборщицы. Повторите попытку.",
-                              );
-                            } finally {
-                              cleanerPrompt.current = false;
-                            }
-                          }}
-                        >
-                          <IconBrush size={18} />
-                          {state.shift?.cleanerVisitedAt
-                            ? `Уборщица · отмечено в ${time(state.shift.cleanerVisitedAt)}`
-                            : "Уборщица"}
-                        </button>
+                        {!training && (
+                          <button
+                            className="cp-button cp-button-secondary cp-cleaner-action"
+                            disabled={Boolean(state.shift?.cleanerVisitedAt)}
+                            onClick={async () => {
+                              if (cleanerPrompt.current) return;
+                              const shiftId = state.shift?.id;
+                              if (!shiftId) return;
+                              cleanerPrompt.current = true;
+                              try {
+                                if (
+                                  !shiftId ||
+                                  !(await confirmAction(
+                                    "Подтвердить приход уборщицы? Отметить приход можно только один раз за смену.",
+                                  ))
+                                )
+                                  return;
+                                await save(
+                                  {
+                                    type: "MARK_CLEANER",
+                                    actorId: user.id,
+                                    shiftId,
+                                    confirmed: true,
+                                  },
+                                  "Приход уборщицы отмечен. Управляющие и суперпользователи получат уведомление.",
+                                );
+                              } catch {
+                                setSaveError(
+                                  "Не удалось подтвердить приход уборщицы. Повторите попытку.",
+                                );
+                              } finally {
+                                cleanerPrompt.current = false;
+                              }
+                            }}
+                          >
+                            <IconBrush size={18} />
+                            {state.shift?.cleanerVisitedAt
+                              ? `Уборщица · отмечено в ${time(state.shift.cleanerVisitedAt)}`
+                              : "Уборщица"}
+                          </button>
+                        )}
                       </div>
                     )}
                     {ownsShift && requiredTasks.length > 0 && (
@@ -671,10 +713,11 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       Задачи для администраторов и управляющих
                     </p>
                   )}
-                  <section className="cp-checklist">
+                  <section className="cp-checklist" data-tutorial="tasks">
                     {user.role === "manager" && (
                       <div
                         className="cp-task-scope"
+                        data-tutorial="scope"
                         aria-label="Исполнитель и постановщик"
                       >
                         {[
@@ -732,6 +775,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         )
                           return;
                         setSelectedTask(id);
+                        training?.onEvent(`task-opened:${id}`);
                         setDirty(false);
                         window.scrollTo({ top: 0 });
                       }}
@@ -819,6 +863,9 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     ].map(({ id, label, icon: Icon }) => (
                       <button
                         key={id}
+                        disabled={Boolean(
+                          training && !["history", "expenses"].includes(id),
+                        )}
                         onClick={() =>
                           id === "history" ? openShiftHistory() : navigate(id)
                         }
@@ -828,6 +875,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         <IconChevronRight size={18} />
                       </button>
                     ))}
+                    {workspace.onTraining && !training && (
+                      <button onClick={workspace.onTraining}>
+                        <IconSchool size={21} stroke={1.5} />
+                        <span>Обучение</span>
+                        <IconChevronRight size={18} />
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -995,7 +1049,14 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                     state.shifts
                       .filter((s) => isManager || s.adminId === user.id)
                       .map((shift) => (
-                        <details className="cp-history-row" key={shift.id}>
+                        <details
+                          className="cp-history-row"
+                          key={shift.id}
+                          onToggle={(event) => {
+                            if (event.currentTarget.open)
+                              training?.onEvent("report-opened");
+                          }}
+                        >
                           <summary>
                             <span>
                               <strong>
@@ -1092,6 +1153,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           )}
         </fieldset>
       </main>
+      {training?.guide}
       {!form && !selected && !linkedRecord && (
         <nav className="cp-bottom-nav" aria-label="Основная навигация">
           <button
@@ -1108,6 +1170,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           </button>
           <button
             aria-current={view === "devices" ? "page" : undefined}
+            disabled={Boolean(training)}
             className={view === "devices" ? "cp-nav-active" : ""}
             onClick={() => navigate("devices")}
           >
@@ -1115,6 +1178,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
             <span>Устройства</span>
           </button>
           <button
+            data-tutorial="more"
             aria-current={
               view === "more" || (!isMain && view !== "devices")
                 ? "page"
@@ -1427,7 +1491,7 @@ function TaskDetails({
             </form>
           )}
           {canReview && (
-            <div className="cp-review-actions">
+            <div className="cp-review-actions" data-tutorial="review">
               {rejecting && (
                 <label className="cp-field">
                   Что нужно исправить?
