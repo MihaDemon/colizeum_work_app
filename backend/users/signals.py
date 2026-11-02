@@ -19,8 +19,11 @@ def preserve_employee_history(sender, instance, using, **kwargs):
     CashRegister.objects.using(using).select_for_update().get(pk=1)
     snapshot = dict(person(instance), id=f'deleted-{instance.pk}', deleted=True)
     snapshot['name'] += ' (удалён)'
+    for task in Task.objects.using(using).filter(reviewers=instance):
+        reviewers = [snapshot if entry.get('id') == str(instance.pk) else entry for entry in task.reviewer_snapshots]
+        Task.objects.using(using).filter(pk=task.pk).update(reviewer_snapshots=reviewers)
     for model, fields in (
-        (Shift, ('admin',)), (Task, ('creator', 'assignee')),
+        (Shift, ('admin', 'closed_by')), (Task, ('creator', 'assignee')),
         (TaskSubmission, ('submitted_by', 'reviewed_by')),
         (Activity, ('actor',)), (TelegramNotification, ('recipient',)),
         (Report, ('admin',)), (Expenses, ('admin',)), (CleanerVisit, ('admin',)), (ScheduleRevision, ('author',)),

@@ -110,7 +110,7 @@ for (const role of ["owner", "creator", "recipient", "admin"] as const) {
     await page.goto("/");
     if (role === "creator")
       await page
-        .getByRole("button", { name: "Поставленные мной", exact: true })
+        .getByRole("button", { name: "Задачи команды", exact: true })
         .click();
     await page.getByRole("button", { name: /Убрать игровые места/ }).click();
     const remove = page.getByRole("button", {
@@ -298,6 +298,193 @@ test("superuser edits cash by tapping balance with stale amount safeguard", asyn
   await expect(
     page.getByRole("button", { name: /Изменить остаток кассы/ }),
   ).toContainText("1 250,50 ₽");
+});
+
+for (const owner of [false, true]) {
+  test(`management force-closes a shift without photos: ${owner ? "superuser" : "manager"}`, async ({
+    page,
+  }, info) => {
+    await setup(page, { staff: !owner, owner });
+    await page.goto("/");
+    await page
+      .getByRole("button", { name: "Принудительно закрыть смену", exact: true })
+      .click();
+    await page.getByLabel("Наличные: сумма", { exact: true }).fill("100");
+    await page.getByLabel("Карта: сумма", { exact: true }).fill("200");
+    await page.getByLabel("СБП: сумма", { exact: true }).fill("300");
+    await page
+      .getByRole("button", { name: "Принудительно закрыть смену", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText("причину");
+    await page
+      .getByLabel("Причина принудительного закрытия", { exact: true })
+      .fill("Телефон администратора не работает");
+    await page
+      .getByRole("checkbox", { name: /Подтверждаю закрытие смены/ })
+      .check();
+    await page.screenshot({
+      path: info.outputPath("force-close.png"),
+      fullPage: true,
+    });
+    const saved = page.waitForRequest(
+      (request) =>
+        request.url().endsWith("/force-close/") && request.method() === "POST",
+    );
+    await page
+      .getByRole("button", { name: "Принудительно закрыть смену", exact: true })
+      .click();
+    const request = await saved;
+    expect(request.postData()).toContain('name="reason"');
+    expect(request.postData()).toContain('name="confirmed"\r\n\r\ntrue');
+    expect(request.headers()["idempotency-key"]).toBeTruthy();
+    await expect(
+      page.getByRole("heading", { name: "Нет активной смены" }),
+    ).toBeVisible();
+  });
+}
+
+test("assigned reviewer can review another person's automatic task", async ({
+  page,
+}) => {
+  await setup(page, { staff: true });
+  await page.route("**/api/workspace/", (route) =>
+    route.fulfill({
+      json: {
+        user: { id: "1", name: "Управляющий", initials: "У", role: "manager" },
+        people: [
+          { id: "1", name: "Управляющий", initials: "У", role: "manager" },
+          { id: "3", name: "Администратор", initials: "А", role: "admin" },
+          { id: "99", name: "Владелец", initials: "В", role: "superuser" },
+        ],
+        state: {
+          shift: null,
+          shifts: [],
+          expenses: [],
+          activity: [],
+          balance: 1000,
+          tasks: [
+            {
+              id: "task-1",
+              title: "Проверить зал",
+              description: "Проверка зала",
+              managerId: "99",
+              adminId: "3",
+              reviewerIds: ["1"],
+              reviewers: [{ id: "1", name: "Управляющий", role: "manager" }],
+              automatic: true,
+              requiredForShiftId: "old",
+              priority: "normal",
+              photoMode: "optional",
+              requiresPhoto: false,
+              status: "moderation",
+              submissionVersion: 1,
+              note: "Готово",
+              createdAt: "2026-11-01T10:00:00Z",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Задачи команды", exact: true })
+    .click();
+  await page.getByRole("button", { name: /Проверить зал/ }).click();
+  await expect(
+    page.getByText("Ответственные за проверку: Управляющий", { exact: true }),
+  ).toBeVisible();
+  const reviewed = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/review/") && request.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Принять задачу", exact: true })
+    .click();
+  expect((await reviewed).postData()).toContain('name="accept"\r\n\r\ntrue');
+});
+
+test("superuser assigns several reviewers to an automatic task", async ({
+  page,
+}, info) => {
+  await setup(page, { owner: true });
+  await page.route("**/api/automatic-tasks/", async (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ json: [] });
+    return route.fulfill({
+      json: {
+        id: "new",
+        title: "Проверить зал",
+        description: "Проверьте зал",
+        shiftType: "both",
+        enabled: true,
+        priority: "normal",
+        photoMode: "optional",
+        photoRequirements: [],
+        referencePhoto: null,
+        version: 1,
+        creatorName: "Владелец",
+        canEdit: true,
+        reviewerIds: ["1", "2", "4"],
+        reviewers: [
+          { id: "1", name: "Владелец", role: "superuser" },
+          { id: "2", name: "Управляющий", role: "manager" },
+          { id: "4", name: "Другой владелец", role: "superuser" },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/automatic-tasks/reviewers/", (route) =>
+    route.fulfill({
+      json: [
+        { id: "1", name: "Владелец", role: "superuser" },
+        { id: "2", name: "Управляющий", role: "manager" },
+        { id: "4", name: "Другой владелец", role: "superuser" },
+      ],
+    }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Автоматические задачи", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Создать автозадачу", exact: true })
+    .click();
+  await page
+    .getByRole("checkbox", { name: "Ответственный: Управляющий", exact: true })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: "Ответственный: Другой владелец",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByLabel("Название автоматической задачи", { exact: true })
+    .fill("Проверить зал");
+  await page
+    .getByLabel("Инструкции автоматической задачи", { exact: true })
+    .fill("Проверьте зал");
+  await page.screenshot({
+    path: info.outputPath("automatic-reviewers.png"),
+    fullPage: true,
+  });
+  const saved = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/api/automatic-tasks/") &&
+      request.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Сохранить автозадачу", exact: true })
+    .click();
+  expect((await saved).postData()).toContain(
+    'name="reviewer_ids"\r\n\r\n[1,2,4]',
+  );
+  await expect(
+    page.getByText(
+      /Ответственные за проверку: Владелец, Управляющий, Другой владелец/,
+    ),
+  ).toBeVisible();
 });
 
 for (const staff of [false, true]) {
@@ -1141,7 +1328,11 @@ async function setup(
       active = true;
       shiftFields = photoSettings.reportFields;
     }
-    if (path.endsWith("/shifts/shift-1/close/")) active = false;
+    if (
+      path.endsWith("/shifts/shift-1/close/") ||
+      path.endsWith("/shifts/shift-1/force-close/")
+    )
+      active = false;
     if (path.endsWith("/shift-expenses/")) balance = 950;
     if (path.endsWith("/tasks/task-1/submit/")) {
       taskStatus = "moderation";

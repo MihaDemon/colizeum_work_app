@@ -1,4 +1,28 @@
 /* One-column Telegram Mini App; the same compact layout at every screen size. */
+.cp-force-audit {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.cp-force-confirm {
+  display: flex;
+  flex-direction: row;
+  font-size: 14px;
+  font-weight: 400;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 24px 0;
+  line-height: 1.6;
+}
+.cp-force-confirm input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  flex: 0 0 20px;
+  margin-top: 5px;
+  min-width: 20px;
+  min-height: 20px;
+  accent-color: var(--cp-accent);
+}
 html.mini-app-page,
 .mini-app-page body {
   overscroll-behavior: none;

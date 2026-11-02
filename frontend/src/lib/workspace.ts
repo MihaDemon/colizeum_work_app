@@ -32,6 +32,8 @@ export interface StaffMember {
 }
 
 export interface Task {
+  reviewerIds?: string[];
+  reviewers?: StaffMember[];
   automatic?: boolean;
   requiredForShiftId?: string | null;
   submissionVersion?: number;
@@ -59,6 +61,8 @@ export interface Task {
 }
 
 export interface Shift {
+  closedBy?: string | null;
+  forcedCloseReason?: string;
   adminName?: string;
   cleanerVisitedAt?: string | null;
   total?: string;
@@ -90,6 +94,7 @@ export interface Expense {
 }
 
 export interface Activity {
+  reviewerIds?: string[];
   recipientId?: string;
   id: string;
   title: string;
@@ -132,11 +137,23 @@ export type Action =
     }
   | {
       type: "CLOSE_SHIFT";
+      shiftId?: string;
       actorId: string;
       cash: number;
       cards: number;
       sbp: number;
       photos: EvidencePhoto[];
+    }
+  | {
+      type: "FORCE_CLOSE_SHIFT";
+      actorId: string;
+      shiftId: string;
+      cash: number;
+      cards: number;
+      sbp: number;
+      photos: EvidencePhoto[];
+      reason: string;
+      confirmed: true;
     }
   | {
       type: "ADD_EXPENSE";
@@ -215,7 +232,10 @@ export function visibleTasks(state: State, persona: StaffMember): Task[] {
   if (persona.role === "superuser") return state.tasks;
   if (persona.role === "manager")
     return state.tasks.filter(
-      (task) => task.managerId === persona.id || task.adminId === persona.id,
+      (task) =>
+        task.managerId === persona.id ||
+        task.adminId === persona.id ||
+        task.reviewerIds?.includes(persona.id),
     );
   return state.tasks.filter(
     (task) =>

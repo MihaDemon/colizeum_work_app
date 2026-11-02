@@ -132,6 +132,11 @@ def deliver_one(send=telegram_send):
     if not job.recipient.is_active or not job.recipient.telegram_id:
         TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Учётная запись отключена или Telegram не связан.')
         return True
+    if job.kind == 'task':
+        from .permissions import can_review
+        if not can_review(job.recipient, related_task):
+            TelegramNotification.objects.filter(pk=job.pk, claim_token=claim).update(status='failed', last_error='Получатель больше не отвечает за проверку задачи.')
+            return True
     manual_schedule = (job.kind == 'schedule' and job.schedule_delivery_id
                        and job.schedule_delivery.source == 'manual')
     if manual_schedule and job.schedule_delivery.author_id != job.recipient_id:

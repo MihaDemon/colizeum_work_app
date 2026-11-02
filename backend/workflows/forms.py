@@ -2,10 +2,17 @@ from django import forms
 from rest_framework.exceptions import ValidationError
 
 from .models import AutomaticTaskTemplate, Task
+from django.contrib.auth import get_user_model
+from django.db.models import Q
 from .serializers import PhotoRequirementsField
 
 
 class WorkflowForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'reviewers' in self.fields:
+            self.fields['reviewers'].queryset = get_user_model().objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True))
+
     def clean(self):
         cleaned = super().clean()
         for field in ('photo_requirements', 'report_fields'):

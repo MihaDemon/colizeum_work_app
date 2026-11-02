@@ -159,16 +159,17 @@ class ScheduleDateMigrationTests(TransactionTestCase):
 
         executor = MigrationExecutor(connection)
         executor.migrate(after)
+        MigratedShift = executor.loader.project_state(after).apps.get_model("workflows", "Shift")
         for pk in (day, night):
-            self.assertEqual(Shift.objects.get(pk=pk).schedule_date, date(2026, 10, 31))
+            self.assertEqual(MigratedShift.objects.get(pk=pk).schedule_date, date(2026, 10, 31))
         for pk in (day_report, night_report):
             self.assertEqual(Report.objects.get(pk=pk).date, date(2026, 10, 31))
-        fixed_night = Shift.objects.get(pk=night)
+        fixed_night = MigratedShift.objects.get(pk=night)
         self.assertEqual(fixed_night.schedule_revision_id, right_revision.pk)
         self.assertEqual(fixed_night.proposed_admin, planned)
-        self.assertEqual(Shift.objects.get(pk=corrected).schedule_date, date(2026, 10, 30))
+        self.assertEqual(MigratedShift.objects.get(pk=corrected).schedule_date, date(2026, 10, 30))
         self.assertEqual(Report.objects.get(pk=corrected_report).date, date(2026, 10, 30))
         self.assertEqual(Report.objects.get(pk=standalone.pk).date, date(2026, 11, 1))
-        self.assertEqual(list(Shift.objects.order_by('pk').values_list('pk', 'opened_at', 'closed_at')), timestamps)
+        self.assertEqual(list(MigratedShift.objects.order_by('pk').values_list('pk', 'opened_at', 'closed_at')), timestamps)
         self.assertEqual(list(Report.objects.order_by('pk').values_list('pk', 'cash', 'cards', 'spb')), amounts)
         self.assertEqual(CashRegister.get_default().balance, 4321)

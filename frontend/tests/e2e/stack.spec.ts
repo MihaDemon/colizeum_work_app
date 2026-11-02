@@ -256,7 +256,7 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     );
     await manager.page.reload();
     await manager.page
-      .getByRole("button", { name: "Поставленные мной", exact: true })
+      .getByRole("button", { name: "Задачи команды", exact: true })
       .click();
     await task(manager.page, "Stack clean desk");
     await expect(
@@ -288,7 +288,7 @@ test("real nginx, PostgreSQL, Django, and Mini App complete the staff workflows"
     await expect(admin.page.locator(".cp-review-notice")).toBeVisible();
     await manager.page.reload();
     await manager.page
-      .getByRole("button", { name: "Поставленные мной", exact: true })
+      .getByRole("button", { name: "Задачи команды", exact: true })
       .click();
     await task(manager.page, "Stack clean desk");
     await manager.page

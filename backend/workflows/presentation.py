@@ -47,6 +47,8 @@ def task_data(task):
         'shiftId': str(task.shift_id) if task.shift_id else None,
         'requiredForShiftId': str(task.required_for_shift_id) if task.required_for_shift_id else None,
         'automatic': task.automatic_template_id is not None,
+        'reviewerIds': [str(p.pk) for p in task.reviewers.all()],
+        'reviewers': task.reviewer_snapshots,
         'priority': task.priority, 'requiresPhoto': task.requires_photo,
         'photoMode': 'single' if task.requires_photo and task.photo_mode == 'optional' else task.photo_mode,
         'photoRequirements': task.photo_requirements, 'photos': photos,
@@ -66,6 +68,8 @@ def shift_data(shift, include_cleaner=True):
         'adminName': participant_name(shift, 'admin'), 'cleanerVisitedAt': iso(cleaner.occurred_at) if cleaner and include_cleaner else None,
         'openedAt': iso(shift.opened_at), 'closedAt': iso(shift.closed_at),
         'scheduleDate': iso(shift.schedule_date),
+        'closedBy': participant_name(shift, 'closed_by') if shift.closed_by_id or shift.user_snapshots.get('closed_by') else None,
+        'forcedCloseReason': shift.forced_close_reason,
         'photoRequirements': shift.photo_requirements,
         **({'balance': float(CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0)} if not report else {}),
         **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
@@ -75,9 +79,9 @@ def shift_data(shift, include_cleaner=True):
 
 
 def workspace_data(user):
-    tasks = visible_tasks(user, Task.objects.select_related('creator', 'assignee').prefetch_related('submissions__photos'))
+    tasks = visible_tasks(user, Task.objects.select_related('creator', 'assignee').prefetch_related('submissions__photos', 'reviewers'))
     photo_settings, _ = PhotoSettings.objects.get_or_create(pk=1)
-    shifts = Shift.objects.select_related('report', 'admin__phone_number', 'cleaner_visit').prefetch_related('report__photos')
+    shifts = Shift.objects.select_related('report', 'admin__phone_number', 'closed_by__phone_number', 'cleaner_visit').prefetch_related('report__photos')
     current = shifts.filter(closed_at__isnull=True).first()
     history = shifts.filter(closed_at__isnull=False)
     expenses = Expenses.objects.select_related('work_shift_expense').prefetch_related('photos').order_by('-date')
@@ -87,13 +91,14 @@ def workspace_data(user):
         expenses = expenses.filter(admin=user)
         activity = activity.filter(Q(actor=user) | Q(task__assignee=user)).exclude(kind='cleaner')
     elif not user.is_superuser:
-        activity = activity.filter(Q(actor=user) | Q(task__creator=user) | Q(task__assignee=user) | Q(task__isnull=True))
+        activity = activity.filter(Q(actor=user) | Q(task__creator=user) | Q(task__reviewers=user) | Q(task__assignee=user) | Q(task__isnull=True)).distinct()
     people_ids = {user.pk}
     if current:
         people_ids.add(current.admin_id)
     task_list, history_list, expense_list = list(tasks), list(history), list(expenses)
     for task in task_list:
         people_ids.update([task.creator_id, task.assignee_id])
+        people_ids.update(p.pk for p in task.reviewers.all())
     people_ids.update(s.admin_id for s in history_list)
     people_ids.update(e.admin_id for e in expense_list if e.admin_id)
     legacy_reports = Report.objects.filter(work_shift__isnull=True).select_related('admin').prefetch_related('photos').order_by('-date', '-pk')
@@ -135,6 +140,7 @@ def workspace_data(user):
             'balance': float(balance),
             'activity': [{'id': str(a.pk), 'title': a.title, 'description': a.description, 'time': iso(a.created_at),
                           'kind': a.kind, 'actorId': participant_id(a, 'actor'),
+                          'reviewerIds': [str(p.pk) for p in a.task.reviewers.all()] if a.task_id else [],
                           'managerId': participant_id(a.task, 'creator') if a.task_id else None, 'recipientId': participant_id(a.task, 'assignee') if a.task_id else None} for a in activity_list],
         },
     }

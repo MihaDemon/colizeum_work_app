@@ -23,7 +23,7 @@ from .models import CleanerVisit, Shift, Task, TaskSubmission, TaskSubmissionPho
 from .permissions import visible_tasks
 from .presentation import cleaner_data, expense_data, shift_data, task_data, workspace_data
 from .notifications import MOSCOW
-from .serializers import CloseShiftSerializer, CreateTaskSerializer, ExpenseSerializer, OpenShiftSerializer, PhotoSettingsSerializer, ReviewTaskSerializer, SubmitTaskSerializer
+from .serializers import CloseShiftSerializer, ForceCloseShiftSerializer, CreateTaskSerializer, ExpenseSerializer, OpenShiftSerializer, PhotoSettingsSerializer, ReviewTaskSerializer, SubmitTaskSerializer
 
 
 def validated(serializer_class, request):
@@ -99,6 +99,12 @@ class ShiftViewSet(viewsets.GenericViewSet):
     @idempotent_command
     def close(self, request, pk=None):
         shift = services.close_shift(request.user, pk, validated(CloseShiftSerializer, request))
+        return Response({'id': str(shift.pk)})
+
+    @action(detail=True, methods=['post'], url_path='force-close')
+    @idempotent_command
+    def force_close(self, request, pk=None):
+        shift = services.close_shift(request.user, pk, validated(ForceCloseShiftSerializer, request), forced=True)
         return Response({'id': str(shift.pk)})
 
 

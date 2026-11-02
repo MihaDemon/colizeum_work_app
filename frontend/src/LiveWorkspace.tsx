@@ -147,11 +147,19 @@ export default function LiveWorkspace({
           if (action.scheduleDate)
             body.append("schedule_date", action.scheduleDate);
           break;
+        case "FORCE_CLOSE_SHIFT":
         case "CLOSE_SHIFT": {
           const shift = snapshotRef.current?.state.shift;
           if (!shift)
             throw new Error("Эта смена уже закрыта. Обновите приложение.");
-          path = `shifts/${shift.id}/close/`;
+          path =
+            action.type === "FORCE_CLOSE_SHIFT"
+              ? `shifts/${action.shiftId}/force-close/`
+              : `shifts/${action.shiftId || shift.id}/close/`;
+          if (action.type === "FORCE_CLOSE_SHIFT") {
+            body.append("reason", action.reason);
+            body.append("confirmed", "true");
+          }
           body.append("cash", action.cash.toFixed(2));
           body.append("cards", action.cards.toFixed(2));
           body.append("sbp", action.sbp.toFixed(2));

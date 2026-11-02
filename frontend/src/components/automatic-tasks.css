@@ -146,3 +146,31 @@
   padding: 0;
   accent-color: var(--cp-accent);
 }
+.automatic-reviewers {
+  margin: 24px 0 28px;
+  padding: 0;
+  border: 0;
+}
+.automatic-reviewers legend {
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+.automatic-reviewers label {
+  display: flex;
+  flex-direction: row;
+  font-size: 14px;
+  font-weight: 400;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--cp-line);
+}
+.automatic-reviewers input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--cp-accent);
+}

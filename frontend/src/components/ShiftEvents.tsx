@@ -111,6 +111,12 @@ export function NotificationDetails({
               </p>
               {shift.closedAt ? (
                 <>
+                  {shift.forcedCloseReason && (
+                    <p className="cp-force-audit">
+                      Принудительно закрыл: {shift.closedBy || "Сотрудник"}.
+                      Причина: {shift.forcedCloseReason}
+                    </p>
+                  )}
                   <div className="cp-history-details">
                     <span>
                       Наличные<strong>{money(shift.cash ?? 0)}</strong>

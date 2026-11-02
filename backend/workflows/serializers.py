@@ -78,6 +78,16 @@ class ExpenseSerializer(serializers.Serializer):
     photo = PhotoField(required=False)
 
 
+class ForceCloseShiftSerializer(CloseShiftSerializer):
+    reason = serializers.CharField(max_length=2000, allow_blank=False)
+    confirmed = serializers.BooleanField()
+
+    def validate_confirmed(self, value):
+        if not value:
+            raise serializers.ValidationError('Подтвердите принудительное закрытие смены.')
+        return value
+
+
 class CreateTaskSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=200)
     description = serializers.CharField(max_length=10000, required=False, allow_blank=True, default='')

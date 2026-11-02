@@ -105,7 +105,7 @@ type View =
   | "notifications"
   | "photo-settings"
   | "more";
-type Form = "expense" | "close" | "open" | "create" | null;
+type Form = "expense" | "close" | "force-close" | "open" | "create" | null;
 const People = createContext<StaffMember[]>([]);
 function usePeople() {
   const people = useContext(People);
@@ -275,7 +275,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       ? tasks.filter((task) =>
           taskScope === "mine"
             ? task.adminId === user.id
-            : task.managerId === user.id,
+            : task.managerId === user.id || task.reviewerIds?.includes(user.id),
         )
       : tasks;
   const activeTasks = listTasks.filter((task) => task.status !== "accepted");
@@ -427,6 +427,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       (isManager && item.kind !== "task") ||
       (isManager
         ? item.managerId === user.id ||
+          item.reviewerIds?.includes(user.id) ||
           item.actorId === user.id ||
           item.recipientId === user.id
         : item.actorId === user.id || item.recipientId === user.id),
@@ -644,6 +645,17 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                         </button>
                       </section>
                     )}
+                    {isManager && state.shift && !training && (
+                      <div className="cp-shift-actions">
+                        <button
+                          className="cp-button cp-button-danger"
+                          onClick={() => setForm("force-close")}
+                        >
+                          <IconDoorExit size={18} />
+                          Принудительно закрыть смену
+                        </button>
+                      </div>
+                    )}
                     {ownsShift && (
                       <div className="cp-shift-actions">
                         <button
@@ -733,7 +745,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                       >
                         {[
                           ["mine", "Мои задачи"],
-                          ["assigned", "Поставленные мной"],
+                          ["assigned", "Задачи команды"],
                         ].map(([scope, label]) => (
                           <button
                             key={scope}
@@ -903,6 +915,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
               )}
               {view === "automatic-tasks" && isManager && (
                 <AutomaticTasksPage
+                  user={user}
                   onBack={back}
                   onDirty={setDirty}
                   onEditorBackChange={setAutomaticEditorBack}
@@ -1104,6 +1117,13 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                             <IconChevronDown size={18} />
                           </summary>
                           <div className="cp-history-details">
+                            {shift.forcedCloseReason && (
+                              <p className="cp-force-audit">
+                                Принудительно закрыл:{" "}
+                                {shift.closedBy || "Сотрудник"}. Причина:{" "}
+                                {shift.forcedCloseReason}
+                              </p>
+                            )}
                             <span>
                               Наличные<strong>{money(shift.cash || 0)}</strong>
                             </span>
@@ -1320,7 +1340,11 @@ function TaskDetails({
     (task.status === "active" || task.status === "rejected");
   const canReview =
     task.adminId !== user.id &&
-    (task.managerId === user.id || user.role === "superuser") &&
+    (user.role === "superuser" ||
+      (user.role === "manager" &&
+        (task.reviewers?.length
+          ? task.reviewerIds?.includes(user.id)
+          : task.managerId === user.id))) &&
     task.status === "moderation";
   return (
     <div className="cp-form-page">
@@ -1342,6 +1366,12 @@ function TaskDetails({
         <p className="cp-field-hint">
           Автоматическая задача смены. Для закрытия смены достаточно отправить
           выполнение на проверку.
+        </p>
+      )}
+      {Boolean(task.reviewers?.length) && (
+        <p className="cp-field-hint">
+          Ответственные за проверку:{" "}
+          {task.reviewers!.map((person) => person.name).join(", ")}
         </p>
       )}
       {!task.requiredForShiftId &&
@@ -1418,11 +1448,13 @@ function TaskDetails({
               <div>
                 <strong>На проверке</strong>
                 <p>
-                  {user.role === "admin"
-                    ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}. Она останется здесь до принятия.`
-                    : user.id === task.adminId
-                      ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}.`
-                      : "Проверьте фотографии и комментарий, затем примите задачу или верните её на доработку."}
+                  {task.reviewers?.length && user.id === task.adminId
+                    ? "Результат проверит один из ответственных или суперпользователь. Задача останется в списке до принятия."
+                    : user.role === "admin"
+                      ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}. Она останется здесь до принятия.`
+                      : user.id === task.adminId
+                        ? `Задачу проверит ${person(task.managerId).deleted ? "суперпользователь" : person(task.managerId).name}.`
+                        : "Проверьте фотографии и комментарий, затем примите задачу или верните её на доработку."}
                 </p>
               </div>
             </div>
@@ -1461,9 +1493,11 @@ function TaskDetails({
                     photos,
                     note,
                   },
-                  person(task.managerId).deleted
-                    ? "Задача отправлена на проверку суперпользователю."
-                    : `Задача отправлена на проверку: ${person(task.managerId).name}.`,
+                  task.reviewers?.length
+                    ? "Задача отправлена ответственным за проверку."
+                    : person(task.managerId).deleted
+                      ? "Задача отправлена на проверку суперпользователю."
+                      : `Задача отправлена на проверку: ${person(task.managerId).name}.`,
                 );
               }}
             >
@@ -1616,6 +1650,12 @@ function WorkflowForm({
   onBack: () => void;
   onSave: (action: Action, message: string) => void;
 }) {
+  const forced = kind === "force-close";
+  const closing = kind === "close" || forced;
+  const [initialShift] = useState(state.shift);
+  const targetShift = closing ? initialShift : state.shift;
+  const [forceReason, setForceReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
   const requiredTasks = blockingShiftTasks(state);
   const { person, people } = usePeople();
@@ -1640,7 +1680,7 @@ function WorkflowForm({
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [photo, setPhoto] = useState("");
   const reportPhotoFields =
-    state.shift?.photoRequirements || defaultReportPhotoFields;
+    targetShift?.photoRequirements || defaultReportPhotoFields;
   const assignees = people.filter(
     (person) =>
       !person.deleted &&
@@ -1653,12 +1693,15 @@ function WorkflowForm({
   const headings = {
     expense: "Добавить расход",
     close: "Закрыть смену",
+    "force-close": "Принудительно закрыть смену",
     open: "Открыть смену",
     create: "Создать задачу",
   };
   const subtitles = {
     expense: "Укажите сумму и причину расхода.",
     close: "Укажите выручку и приложите фотографии для закрытия смены.",
+    "force-close":
+      "Укажите фактическую выручку и причину. Фотографии необязательны; незавершённые задачи сохранятся.",
     open: "Выберите тип смены.",
     create:
       user.role === "superuser"
@@ -1726,15 +1769,26 @@ function WorkflowForm({
         },
         `${money(amount)} — расход сохранён и вычтен из кассы.`,
       );
-    } else if (kind === "close") {
-      if (requiredTasks.length) {
+    } else if (closing) {
+      if (!targetShift || state.shift?.id !== targetShift.id) {
+        setError("Смена изменилась. Вернитесь к списку и обновите данные.");
+        return;
+      }
+      if (
+        forced &&
+        (user.role === "admin" || !forceReason.trim() || !confirmed)
+      ) {
+        setError("Укажите причину и подтвердите принудительное закрытие.");
+        return;
+      }
+      if (requiredTasks.length && !forced) {
         setError(
           "Перед закрытием смены отправьте обязательные задачи на проверку: " +
             requiredTasks.map((task) => task.title).join(", "),
         );
         return;
       }
-      if (state.shift?.adminId !== user.id) {
+      if (!forced && state.shift?.adminId !== user.id) {
         setError("Закрыть смену может только открывший её администратор.");
         return;
       }
@@ -1745,6 +1799,7 @@ function WorkflowForm({
         return;
       }
       if (
+        !forced &&
         reportPhotoFields.some((field) => field.required && !photos[field.id])
       ) {
         setError(
@@ -1754,7 +1809,14 @@ function WorkflowForm({
       }
       onSave(
         {
-          type: "CLOSE_SHIFT",
+          ...(forced
+            ? {
+                type: "FORCE_CLOSE_SHIFT" as const,
+                reason: forceReason.trim(),
+                confirmed: true as const,
+              }
+            : { type: "CLOSE_SHIFT" as const }),
+          shiftId: targetShift.id,
           actorId: user.id,
           cash: parseAmount(cash),
           cards: parseAmount(cards),
@@ -1832,10 +1894,10 @@ function WorkflowForm({
       </div>
       <div className="cp-detail-layout">
         <form className="cp-form-panel" onSubmit={submit} noValidate>
-          {(kind === "open" || kind === "close") && (
+          {(kind === "open" || closing) && (
             <>
               <h2>Данные смены</h2>
-              {kind === "close" ? (
+              {closing ? (
                 <>
                   <dl className="cp-closing-shift">
                     <dt>Тип смены</dt>
@@ -1910,10 +1972,14 @@ function WorkflowForm({
                   </p>
                 ) : null)}
               <div className="cp-form-info">
-                <span>{user.name}</span>
+                <span>
+                  {closing && targetShift
+                    ? person(targetShift.adminId).name
+                    : user.name}
+                </span>
                 <span>
                   {dateLabel(
-                    (kind === "close"
+                    (closing
                       ? state.shift?.scheduleDate
                       : openingScheduleDate) || new Date().toISOString(),
                   )}
@@ -1969,9 +2035,9 @@ function WorkflowForm({
               )}
             </>
           )}
-          {kind === "close" && (
+          {closing && (
             <>
-              {requiredTasks.length > 0 && (
+              {requiredTasks.length > 0 && !forced && (
                 <p className="cp-inline-error" role="status">
                   Закрытие недоступно. Отправьте на проверку:{" "}
                   {requiredTasks.map((task) => task.title).join(", ")}.
@@ -2018,14 +2084,16 @@ function WorkflowForm({
                 Фотографии закрытия смены
               </h2>
               <p className="cp-field-hint">
-                Поля со знаком * обязательны. Общий размер фотографий — до 15
-                МБ.
+                {forced
+                  ? "Фотографии можно добавить, если они доступны."
+                  : "Поля со знаком * обязательны."}{" "}
+                Общий размер фотографий — до 15 МБ.
               </p>
               {reportPhotoFields.map((field) => (
                 <Upload
                   key={field.id}
                   label={field.label}
-                  required={field.required}
+                  required={field.required && !forced}
                   value={photos[field.id]}
                   onError={setError}
                   onChange={(url) =>
@@ -2144,6 +2212,35 @@ function WorkflowForm({
               </p>
             </div>
           )}
+          {forced && (
+            <>
+              <label className="cp-field">
+                Причина принудительного закрытия
+                <textarea
+                  aria-label="Причина принудительного закрытия"
+                  rows={3}
+                  maxLength={2000}
+                  value={forceReason}
+                  onChange={(event) => {
+                    setForceReason(event.target.value);
+                    setError("");
+                  }}
+                />
+              </label>
+              <label className="cp-force-confirm">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(event) => {
+                    setConfirmed(event.target.checked);
+                    setError("");
+                  }}
+                />
+                Подтверждаю закрытие смены с указанной выручкой. Незавершённые
+                задачи сохранятся.
+              </label>
+            </>
+          )}
           {error && (
             <p className="cp-inline-error" role="alert">
               {error}
@@ -2159,13 +2256,13 @@ function WorkflowForm({
             </button>
             <button
               className="cp-button cp-button-primary"
-              disabled={kind === "close" && requiredTasks.length > 0}
+              disabled={closing && !forced && requiredTasks.length > 0}
             >
               {kind === "expense" ? (
                 <IconPlus size={17} />
               ) : kind === "create" ? (
                 <IconClipboardCheck size={17} />
-              ) : kind === "close" ? (
+              ) : closing ? (
                 <IconDoorExit size={17} />
               ) : (
                 <IconDoorEnter size={17} />
