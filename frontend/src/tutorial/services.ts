@@ -285,9 +285,13 @@ export function trainingRequest(
     const period = data.periods[1];
     const body = JSON.parse(String(options.body));
     if (parts[2] === "generate" && step === 1) {
-      const admins = scheduleAdmins.filter((person) =>
-        body.admins?.includes(Number(person.id)),
+      const dayAdmins = (body.day_admins || []).map((id: number) =>
+        scheduleAdmins.find((person) => Number(person.id) === id),
       );
+      const nightAdmins = (body.night_admins || []).map((id: number) =>
+        scheduleAdmins.find((person) => Number(person.id) === id),
+      );
+      const admins = [...dayAdmins, ...nightAdmins].filter(Boolean);
       if (admins.length !== 4)
         throw new Error(
           "Для упражнения оставьте выбранными четырёх администраторов.",
@@ -306,6 +310,8 @@ export function trainingRequest(
           warning:
             "Учебный черновик 2/2 готов. Проверьте его и сохраните график.",
           admins: admins.map((a) => a.id),
+          dayAdmins: dayAdmins.map((a: StaffMember) => a.id),
+          nightAdmins: nightAdmins.map((a: StaffMember) => a.id),
         },
       };
     }

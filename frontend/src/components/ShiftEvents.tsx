@@ -8,6 +8,7 @@ import { request } from "../lib/api";
 import { cleanerDateTime, money, time } from "../lib/format";
 import type { Expense, Shift } from "../lib/workspace";
 import { PrivateImage } from "./PrivateImage";
+import type { EditableRecord } from "./RecordEditor";
 
 export type RecordTarget = { kind: "shift" | "expense"; id: string };
 export function notificationTarget(search: string): RecordTarget | null {
@@ -70,9 +71,11 @@ function FetchState({ error, retry }: { error: string; retry: () => void }) {
 export function NotificationDetails({
   target,
   onBack,
+  onEdit,
 }: {
   target: RecordTarget;
   onBack: () => void;
+  onEdit?: (target: EditableRecord) => void;
 }) {
   const { data, error, retry } = useRecord<Shift | Expense>(
     target.kind === "shift"
@@ -157,6 +160,15 @@ export function NotificationDetails({
                   <figcaption>{label}</figcaption>
                 </figure>
               ))}
+              {shift.info && <p>{shift.info}</p>}
+              {shift.closedAt && shift.editingVersion && onEdit && (
+                <button
+                  className="cp-button cp-button-secondary"
+                  onClick={() => onEdit({ kind: "shift", record: shift })}
+                >
+                  Редактировать смену
+                </button>
+              )}
             </>
           )}
           {expense && (
@@ -179,6 +191,14 @@ export function NotificationDetails({
                   <figcaption>{photo.label}</figcaption>
                 </figure>
               ))}
+              {expense.editingVersion && onEdit && (
+                <button
+                  className="cp-button cp-button-secondary"
+                  onClick={() => onEdit({ kind: "expense", record: expense })}
+                >
+                  Редактировать расход
+                </button>
+              )}
             </>
           )}
         </div>

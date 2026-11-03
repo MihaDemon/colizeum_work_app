@@ -5,6 +5,7 @@ from users.history import archived_people, participant_id
 from .models import Activity, PhotoSettings, Shift, Task
 from .permissions import person, visible_tasks
 from .scheduling import opening_schedule
+from .editing import record_version
 
 
 def file_url(kind, pk):
@@ -27,7 +28,7 @@ def cleaner_data(visit):
 
 def expense_data(expense):
     photos = list(expense.photos.all())
-    return {'id': str(expense.pk), 'adminId': participant_id(expense, 'admin'), 'adminName': participant_name(expense, 'admin'),
+    return {'id': str(expense.pk), 'editingVersion': record_version(expense), 'adminId': participant_id(expense, 'admin'), 'adminName': participant_name(expense, 'admin'),
             'shiftId': str(expense.work_shift_expense.shift_id) if hasattr(expense, 'work_shift_expense') else None,
             'amount': float(expense.amount), 'description': expense.info, 'createdAt': iso(expense.date),
             'photo': file_url('expense', photos[0].pk) if photos else None,
@@ -72,7 +73,9 @@ def shift_data(shift, include_cleaner=True):
         'forcedCloseReason': shift.forced_close_reason,
         'photoRequirements': shift.photo_requirements,
         **({'balance': float(CashRegister.objects.filter(pk=1).values_list('balance', flat=True).first() or 0)} if not report else {}),
-        **({'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
+        **({'editingVersion': record_version(shift), 'info': report.info or '',
+            'reportPhotos': [{'id': str(p.pk), 'slot': '', 'label': p.label or f'Фото {p.pk}', 'url': file_url('report', p.pk)} for p in report.photos.all()],
+            'cash': float(report.cash), 'cards': float(report.cards), 'sbp': float(report.spb),
             'total': str(report.cash + report.cards + report.spb),
             'photos': {p.label or f'Фото {p.pk}': file_url('report', p.pk) for p in report.photos.all()}} if report else {}),
     }
@@ -84,7 +87,7 @@ def workspace_data(user):
     shifts = Shift.objects.select_related('report', 'admin__phone_number', 'closed_by__phone_number', 'cleaner_visit').prefetch_related('report__photos')
     current = shifts.filter(closed_at__isnull=True).first()
     history = shifts.filter(closed_at__isnull=False)
-    expenses = Expenses.objects.select_related('work_shift_expense').prefetch_related('photos').order_by('-date')
+    expenses = Expenses.objects.select_related('admin__phone_number', 'work_shift_expense').prefetch_related('photos').order_by('-date')
     activity = Activity.objects.select_related('task')
     if not user.is_staff and not user.is_superuser:
         history = history.filter(admin=user)
@@ -112,6 +115,8 @@ def workspace_data(user):
     people = get_user_model().objects.select_related('phone_number').filter(Q(pk__in=people_ids) | available)
     legacy = [{
         'id': f'legacy-{r.pk}', 'adminId': participant_id(r, 'admin'), 'type': r.shift,
+        'editingVersion': record_version(r), 'info': r.info or '',
+        'reportPhotos': [{'id': str(p.pk), 'slot': '', 'label': p.label or f'Фото {p.pk}', 'url': file_url('report', p.pk)} for p in r.photos.all()],
         # A date anchor is only used to format the date; the UI does not invent shift times.
         'openedAt': f'{r.date.isoformat()}T12:00:00+03:00', 'legacy': True,
         'scheduleDate': iso(r.date),
@@ -131,12 +136,7 @@ def workspace_data(user):
             'photoSettings': {'reportFields': photo_settings.report_fields, 'version': photo_settings.version},
             'shift': shift_data(current) if current else None,
             'shifts': sorted([shift_data(s, include_cleaner=user.is_staff or user.is_superuser) for s in history_list] + legacy, key=lambda s: s['openedAt'], reverse=True), 'tasks': [task_data(t) for t in task_list],
-            'expenses': [{
-                'id': str(e.pk), 'adminId': participant_id(e, 'admin'),
-                'shiftId': str(e.work_shift_expense.shift_id) if hasattr(e, 'work_shift_expense') else None,
-                'amount': float(e.amount), 'description': e.info, 'createdAt': iso(e.date),
-                'photo': file_url('expense', e.photos.all()[0].pk) if e.photos.all() else None,
-            } for e in expense_list],
+            'expenses': [expense_data(e) for e in expense_list],
             'balance': float(balance),
             'activity': [{'id': str(a.pk), 'title': a.title, 'description': a.description, 'time': iso(a.created_at),
                           'kind': a.kind, 'actorId': participant_id(a, 'actor'),

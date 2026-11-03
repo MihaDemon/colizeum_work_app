@@ -162,7 +162,10 @@ def generate(user, period, data):
     current = ensure_period(today())
     if period.start != current.end + timedelta(days=1):
         raise ValidationError('Автозаполнение доступно только для следующего графика.')
-    ids = [str(pk) for pk in data['admins']]
+    separate = 'day_admins' in data or 'night_admins' in data
+    day_ids = [str(pk) for pk in data.get('day_admins', [])]
+    night_ids = [str(pk) for pk in data.get('night_admins', [])]
+    ids = day_ids + night_ids if separate else [str(pk) for pk in data['admins']]
     if len(set(ids)) != len(ids):
         raise ValidationError('Администраторы не должны повторяться в выбранном списке.')
     available = {str(u.pk): person(u) for u in active_admins()}
@@ -175,16 +178,29 @@ def generate(user, period, data):
     # Keep each person's day/night position across periods when the team is unchanged.
     previous = SchedulePeriod.objects.filter(start__lt=period.start).order_by('-start').first()
     old_order = head(previous).generation.get('admins', []) if previous else []
-    if set(old_order) == set(ids):
+    if not separate and set(old_order) == set(ids):
         ids = old_order
-    positions = ids + [default] * (4 - len(ids))
+    if separate:
+        old_generation = head(previous).generation if previous else {}
+        # Preserve the 2/2 phase within each shift type, never across types.
+        if set(old_generation.get('day_admins', [])) == set(day_ids):
+            day_ids = old_generation.get('day_admins', day_ids)
+        if set(old_generation.get('night_admins', [])) == set(night_ids):
+            night_ids = old_generation.get('night_admins', night_ids)
+        days = day_ids + [default] * (2 - len(day_ids))
+        nights = night_ids + [default] * (2 - len(night_ids))
+        positions = [days[0], nights[0], days[1], nights[1]]
+        ids = day_ids + night_ids
+    else:
+        positions = ids + [default] * (4 - len(ids))
+        day_ids, night_ids = ids[::2], ids[1::2]
     plan = {}
     for key in keys(period):
         day_text, kind = key.split('/')
         phase = (date.fromisoformat(day_text) - date(2026, 1, 1)).days % 4
         position = (0 if phase < 2 else 2) + (0 if kind == 'day' else 1)
         plan[key] = available[positions[position]]
-    return {'plan': plan, 'admins': ids, 'fallbackUsed': len(ids) < 4,
+    return {'plan': plan, 'admins': ids, 'dayAdmins': day_ids, 'nightAdmins': night_ids, 'fallbackUsed': len(ids) < 4,
             'warning': 'Недостающие позиции назначены администратору по умолчанию. Он может занимать несколько позиций; проверьте нагрузку перед сохранением.' if len(ids) < 4 else ''}
 
 
@@ -219,7 +235,10 @@ def save_plan(user, period, data):
         _, current_end = bounds(today())
         if period.start != current_end + timedelta(days=1):
             raise ValidationError('Автоматический график можно сохранить только для следующего периода.')
-        ids = [str(pk) for pk in data.get('admins', [])]
+        separate = 'day_admins' in data or 'night_admins' in data
+        if separate and not all(key in data for key in ('day_admins', 'night_admins')):
+            raise ValidationError('Укажите дневных и ночных администраторов.')
+        ids = [str(pk) for pk in (data.get('day_admins', []) + data.get('night_admins', []) if separate else data.get('admins', []))]
         if len(set(ids)) != len(ids) or any(pk not in available for pk in ids):
             raise ValidationError('Проверьте список администраторов автозаполнения.')
     plan = {}
@@ -234,6 +253,9 @@ def save_plan(user, period, data):
         else:
             raise ValidationError('Назначить можно только действующего администратора.')
     generation = {'admins': [str(pk) for pk in data.get('admins', [])]} if data['source'] == 'automatic' else original.generation
+    if data['source'] == 'automatic' and separate:
+        generation = {'admins': ids, 'day_admins': [str(pk) for pk in data['day_admins']],
+                      'night_admins': [str(pk) for pk in data['night_admins']]}
     return publish_revision(period, user, plan, data['source'], generation)
 
 

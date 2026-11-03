@@ -59,6 +59,7 @@ def health(request):
 
 class ShiftViewSet(viewsets.GenericViewSet):
     serializer_class = OpenShiftSerializer
+    lookup_value_regex = r'(?:[0-9]+|legacy-[0-9]+)'
 
     def get_serializer_class(self):
         return CloseShiftSerializer if self.action == 'close' else OpenShiftSerializer
@@ -106,6 +107,16 @@ class ShiftViewSet(viewsets.GenericViewSet):
     def force_close(self, request, pk=None):
         shift = services.close_shift(request.user, pk, validated(ForceCloseShiftSerializer, request), forced=True)
         return Response({'id': str(shift.pk)})
+
+    @action(detail=True, methods=['post'])
+    @idempotent_command
+    def edit(self, request, pk=None):
+        from .editing import EditShiftSerializer, edit_shift
+        try:
+            edit_shift(request.user, pk, validated(EditShiftSerializer, request))
+        except InsufficientCash as exc:
+            raise ValidationError({'cash': exc.messages})
+        return Response({'id': str(pk)})
 
 
 class TaskViewSet(viewsets.GenericViewSet):
@@ -159,8 +170,16 @@ def expense(request):
     return Response({'id': str(record.pk)}, status=201)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
+@idempotent_command
 def expense_details(request, pk):
+    if request.method == 'POST':
+        from .editing import EditExpenseSerializer, edit_expense
+        try:
+            record = edit_expense(request.user, pk, validated(EditExpenseSerializer, request))
+        except InsufficientCash as exc:
+            raise ValidationError({'amount': exc.messages})
+        return Response(expense_data(record))
     from reports.models import Expenses
     records = Expenses.objects.select_related('admin__phone_number', 'work_shift_expense').prefetch_related('photos')
     if not (request.user.is_staff or request.user.is_superuser):

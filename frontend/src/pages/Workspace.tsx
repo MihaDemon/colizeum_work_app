@@ -47,6 +47,7 @@ import { CashBalance } from "../components/CashBalance";
 import { Equipment } from "../pages/Equipment";
 import { PrivateImage } from "../components/PrivateImage";
 import { SchedulePage } from "../components/SchedulePage";
+import { RecordEditor, type EditableRecord } from "../components/RecordEditor";
 import { AutomaticTasksPage } from "../components/AutomaticTasksPage";
 import {
   CleanerHistory,
@@ -243,6 +244,9 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     () => new URLSearchParams(location.search).get("cleaner") || undefined,
   );
   const [form, setForm] = useState<Form>(null);
+  const [editingRecord, setEditingRecord] = useState<EditableRecord | null>(
+    null,
+  );
   const [shiftExpanded, setShiftExpanded] = useState(false);
   useEffect(() => setShiftExpanded(false), [state.shift?.id, view]);
   const [selectedTask, setSelectedTask] = useState<string | null>(() =>
@@ -287,6 +291,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   ).length;
   const isMain = view === "shift" || view === "tasks";
   const nested = Boolean(
+    editingRecord ||
     form ||
     linkedRecord ||
     selectedTask ||
@@ -326,6 +331,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
       setScheduleSettingsOpen(false);
       setLinkedRecord(null);
       setForm(null);
+      setEditingRecord(null);
       setSelectedTask(null);
       setFilter("all");
       setDirty(false);
@@ -341,7 +347,8 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     )
       return;
     setDirty(false);
-    if (linkedRecord) setLinkedRecord(null);
+    if (editingRecord) setEditingRecord(null);
+    else if (linkedRecord) setLinkedRecord(null);
     else if (form) setForm(null);
     else if (selectedTask) setSelectedTask(null);
     else if (scheduleSettingsOpen) setScheduleSettingsOpen(false);
@@ -354,6 +361,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
     dirty,
     busy,
     linkedRecord,
+    editingRecord,
     form,
     selectedTask,
     scheduleSettingsOpen,
@@ -461,7 +469,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
   );
   return (
     <div
-      className={`cp-app${training ? " cp-training" : ""}${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord ? " cp-focused" : ""}`}
+      className={`cp-app${training ? " cp-training" : ""}${embedded ? " cp-in-telegram" : ""}${form || selected || linkedRecord || editingRecord ? " cp-focused" : ""}`}
       data-tutorial-target={training?.target}
       onChange={() => {
         if (form || selectedTask || view === "photo-settings") setDirty(true);
@@ -492,6 +500,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           !form &&
           !selected &&
           !linkedRecord &&
+          !editingRecord &&
           workspace.trainingInvite}
         {(saveError || workspace.error) && (
           <p className="cp-inline-error" role="alert">
@@ -504,8 +513,32 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
           </p>
         )}
         <fieldset className="cp-workspace-controls" disabled={busy}>
-          {linkedRecord ? (
-            <NotificationDetails target={linkedRecord} onBack={back} />
+          {editingRecord ? (
+            <RecordEditor
+              target={editingRecord}
+              user={user}
+              people={workspace.people}
+              balance={state.balance}
+              onBack={back}
+              onDirty={() => setDirty(true)}
+              onSave={async (action, message) => {
+                const saved = await save(action, message);
+                if (saved) {
+                  setEditingRecord(null);
+                  setLinkedRecord(null);
+                }
+                return saved;
+              }}
+            />
+          ) : linkedRecord ? (
+            <NotificationDetails
+              target={linkedRecord}
+              onBack={back}
+              onEdit={(target) => {
+                setSaveError("");
+                setEditingRecord(target);
+              }}
+            />
           ) : form ? (
             <WorkflowForm
               key={`${form}-${user.id}`}
@@ -1057,6 +1090,20 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                               alt="Чек расхода"
                             />
                           )}
+                          {!training && expense.editingVersion && (
+                            <button
+                              className="cp-button cp-button-secondary"
+                              onClick={() => {
+                                setSaveError("");
+                                setEditingRecord({
+                                  kind: "expense",
+                                  record: expense,
+                                });
+                              }}
+                            >
+                              Редактировать расход
+                            </button>
+                          )}
                         </details>
                       ))}
                     {!state.expenses.some(
@@ -1171,6 +1218,21 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
                                 </figure>
                               ),
                             )}
+                            {shift.info && <p>{shift.info}</p>}
+                            {!training && shift.editingVersion && (
+                              <button
+                                className="cp-button cp-button-secondary"
+                                onClick={() => {
+                                  setSaveError("");
+                                  setEditingRecord({
+                                    kind: "shift",
+                                    record: shift,
+                                  });
+                                }}
+                              >
+                                Редактировать смену
+                              </button>
+                            )}
                           </div>
                         </details>
                       ))
@@ -1220,7 +1282,7 @@ function WorkspaceView({ workspace }: { workspace: WorkspaceProps }) {
         </fieldset>
       </main>
       {training?.guide}
-      {!form && !selected && !linkedRecord && (
+      {!form && !selected && !linkedRecord && !editingRecord && (
         <nav className="cp-bottom-nav" aria-label="Основная навигация">
           <button
             aria-current={isMain ? "page" : undefined}

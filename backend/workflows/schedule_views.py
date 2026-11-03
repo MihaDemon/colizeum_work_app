@@ -23,10 +23,22 @@ class Save(Version):
     slots = Slot(many=True, max_length=32)
     source = serializers.ChoiceField(choices=['manual', 'automatic'], default='manual')
     admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=4, default=list)
+    day_admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=2, required=False)
+    night_admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=2, required=False)
 
 
 class Generate(Version):
-    admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=4)
+    admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=4, required=False)
+    day_admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=2, required=False)
+    night_admins = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=2, required=False)
+
+    def validate(self, attrs):
+        if 'day_admins' in attrs or 'night_admins' in attrs:
+            if 'day_admins' not in attrs or 'night_admins' not in attrs:
+                raise serializers.ValidationError('Укажите оба списка: дневных и ночных администраторов.')
+        elif 'admins' not in attrs:
+            raise serializers.ValidationError('Выберите дневных и ночных администраторов.')
+        return attrs
 
 
 class Restore(Version):
