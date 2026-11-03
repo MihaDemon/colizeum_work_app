@@ -61,6 +61,9 @@ export interface Task {
 }
 
 export interface Shift {
+  editingVersion?: string;
+  info?: string;
+  reportPhotos?: EvidencePhoto[];
   closedBy?: string | null;
   forcedCloseReason?: string;
   adminName?: string;
@@ -82,6 +85,7 @@ export interface Shift {
 }
 
 export interface Expense {
+  editingVersion?: string;
   adminName?: string;
   photos?: { url: string; label: string }[];
   id: string;
@@ -127,6 +131,33 @@ export type NewTask = Pick<
 };
 
 export type Action =
+  | {
+      type: "EDIT_EXPENSE";
+      actorId: string;
+      expenseId: string;
+      version: string;
+      amount: number;
+      description: string;
+      photo?: string;
+      removePhoto: boolean;
+    }
+  | {
+      type: "EDIT_SHIFT";
+      actorId: string;
+      shiftId: string;
+      version: string;
+      adminId: string | null;
+      shiftType: "day" | "night";
+      scheduleDate: string;
+      openedAt?: string;
+      closedAt?: string;
+      cash: number;
+      cards: number;
+      sbp: number;
+      info: string;
+      forcedCloseReason: string;
+      photos: EvidencePhoto[];
+    }
   | { type: "DELETE_TASK"; actorId: string; taskId: string }
   | { type: "MARK_CLEANER"; actorId: string; shiftId: string; confirmed: true }
   | {

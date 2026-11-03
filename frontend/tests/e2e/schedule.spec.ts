@@ -250,13 +250,20 @@ async function setup(
           json: { detail: "График изменился." },
         });
       if (match[2] === "generate/") {
-        if (data.admins.length < 4 && !config.defaultAdminId)
+        const dayAdmins = data.day_admins.map(String);
+        const nightAdmins = data.night_admins.map(String);
+        const chosen = [...dayAdmins, ...nightAdmins];
+        if (chosen.length < 4 && !config.defaultAdminId)
           return route.fulfill({
             status: 400,
             json: { detail: "Выберите администратора по умолчанию." },
           });
-        const selected = [...data.admins.map(String)];
-        while (selected.length < 4) selected.push(config.defaultAdminId!);
+        const selected = [
+          dayAdmins[0],
+          nightAdmins[0],
+          dayAdmins[1],
+          nightAdmins[1],
+        ].map((id) => id || config.defaultAdminId!);
         const plan = Object.fromEntries(
           Object.keys(list.at(-1)!.plan).map((key) => {
             const [day, kind] = key.split("/");
@@ -272,9 +279,11 @@ async function setup(
         return route.fulfill({
           json: {
             plan,
-            admins: data.admins.map(String),
+            admins: chosen,
+            dayAdmins,
+            nightAdmins,
             warning:
-              data.admins.length < 4
+              chosen.length < 4
                 ? "Недостающие позиции назначены администратору по умолчанию."
                 : "",
           },
@@ -407,7 +416,7 @@ test("managers assign by tapping cells, save explicitly, and restore versions", 
 
 test("superusers choose fallback; automatic schedules remain drafts until saved", async ({
   page,
-}) => {
+}, info) => {
   const { versions } = await setup(page, "superuser");
   await openSchedule(page);
   await page.getByText("Администратор по умолчанию", { exact: true }).click();
@@ -423,7 +432,18 @@ test("superusers choose fallback; automatic schedules remain drafts until saved"
   await page.getByRole("button", { name: "Следующий", exact: true }).click();
   await page.getByRole("button", { name: "Редактировать график" }).click();
   await page.getByText("Автозаполнение 2/2", { exact: true }).click();
-  await page.getByLabel("Администратор 4", { exact: true }).uncheck();
+  await page
+    .getByRole("group", { name: /Дневные администраторы/ })
+    .getByLabel("Администратор 2", { exact: true })
+    .uncheck();
+  await page
+    .getByRole("group", { name: /Ночные администраторы/ })
+    .getByLabel("Администратор 4", { exact: true })
+    .uncheck();
+  await page.screenshot({
+    path: info.outputPath("schedule-teams.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Заполнить 2/2" }).click();
   await expect(page.getByRole("status")).toContainText("Недостающие позиции");
   expect(versions.get("2")!.length).toBe(1);
@@ -434,6 +454,10 @@ test("superusers choose fallback; automatic schedules remain drafts until saved"
     page.getByText("График сохранён. Создана новая версия."),
   ).toBeVisible();
   expect(versions.get("2")!.at(-1)!.source).toBe("automatic");
+  for (const [key, person] of Object.entries(versions.get("2")!.at(-1)!.plan))
+    expect(key.endsWith("/day") ? ["10", "14"] : ["12", "14"]).toContain(
+      person?.id,
+    );
   expect(
     Object.values(versions.get("2")!.at(-1)!.plan).some((p) => p?.id === "14"),
   ).toBe(true);

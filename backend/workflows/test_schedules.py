@@ -125,6 +125,50 @@ class ScheduleTests(APITestCase):
         second = self.generate(list(reversed(self.admins[:4])), next_id).data
         self.assertEqual(second['admins'], [str(u.pk) for u in self.admins[:4]])
 
+    def test_explicit_day_and_night_teams_fill_each_missing_position_with_default(self):
+        self.set_default()
+        for day_count, night_count in ((0, 0), (1, 1), (2, 0), (0, 2), (2, 1), (1, 2), (2, 2)):
+            days = self.admins[:day_count]
+            nights = self.admins[2:2 + night_count]
+            response = self.client.post(f'/api/schedules/{self.future}/generate/', {
+                'version': 1, 'day_admins': [u.pk for u in days], 'night_admins': [u.pk for u in nights]}, format='json')
+            self.assertEqual(response.status_code, 200, response.data)
+            for key, person in response.data['plan'].items():
+                day, kind = key.split('/')
+                index = 0 if (date.fromisoformat(day) - date(2026, 1, 1)).days % 4 < 2 else 1
+                team = days if kind == 'day' else nights
+                expected = team[index] if index < len(team) else self.admins[4]
+                self.assertEqual(person['id'], str(expected.pk), (day_count, night_count, key))
+        self.assertEqual(ScheduleRevision.objects.count(), 2)
+
+    def test_explicit_teams_validate_limits_duplicates_and_missing_default(self):
+        path = f'/api/schedules/{self.future}/generate/'
+        payload = {'version': 1, 'day_admins': [self.admins[0].pk], 'night_admins': [self.admins[1].pk]}
+        self.assertEqual(self.client.post(path, payload, format='json').status_code, 400)
+        self.set_default()
+        for changes in ({'night_admins': [self.admins[0].pk]},
+                        {'day_admins': [u.pk for u in self.admins[:3]]},
+                        {'night_admins': [self.manager.pk]}):
+            self.assertEqual(self.client.post(path, {**payload, **changes}, format='json').status_code, 400)
+        self.assertEqual(self.client.post(path, {'version': 1, 'day_admins': []}, format='json').status_code, 400)
+
+    def test_explicit_teams_keep_phase_across_periods_and_allow_changing_shift_type(self):
+        days, nights = self.admins[:2], self.admins[2:4]
+        payload = {'version': 1, 'day_admins': [u.pk for u in days], 'night_admins': [u.pk for u in nights]}
+        generated = self.client.post(f'/api/schedules/{self.future}/generate/', payload, format='json').data
+        saved = self.client.post(f'/api/schedules/{self.future}/', {
+            **payload, 'source': 'automatic', 'slots': rows(generated['plan'])}, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.clock.return_value = datetime.fromisoformat('2026-10-16T12:00:00+03:00')
+        next_id = self.client.get('/api/schedules/').data['future']['id']
+        reverse = {**payload, 'day_admins': list(reversed(payload['day_admins'])), 'night_admins': list(reversed(payload['night_admins']))}
+        second = self.client.post(f'/api/schedules/{next_id}/generate/', reverse, format='json').data
+        self.assertEqual(second['dayAdmins'], [str(u.pk) for u in days])
+        self.assertEqual(second['nightAdmins'], [str(u.pk) for u in nights])
+        swapped = self.client.post(f'/api/schedules/{next_id}/generate/', {
+            **payload, 'day_admins': payload['night_admins'], 'night_admins': payload['day_admins']}, format='json').data
+        self.assertEqual(swapped['dayAdmins'], [str(u.pk) for u in nights])
+
     def test_manual_versions_conflicts_restore_and_invalid_assignments(self):
         self.client.force_authenticate(self.manager)
         original = self.detail()

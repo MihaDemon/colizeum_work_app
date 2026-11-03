@@ -103,7 +103,8 @@ export function SchedulePage({
   const [dirty, setDirty] = useState(false);
   const [draft, setDraft] = useState<Plan>({});
   const [selectedAdmin, setSelectedAdmin] = useState("");
-  const [autoIds, setAutoIds] = useState<string[]>([]);
+  const [dayIds, setDayIds] = useState<string[]>([]);
+  const [nightIds, setNightIds] = useState<string[]>([]);
   const [source, setSource] = useState<"manual" | "automatic">("manual");
   const [cell, setCell] = useState<string | null>(null);
   const [defaultId, setDefaultId] = useState("");
@@ -129,7 +130,8 @@ export function SchedulePage({
         setDefaultId(data.settings.defaultAdminId || "");
         if (initialId === data.current.id) setMode("current");
         else if (initialId === data.future.id) setMode("future");
-        setAutoIds(data.admins.slice(0, 4).map((p) => p.id));
+        setDayIds(data.admins.slice(0, 2).map((p) => p.id));
+        setNightIds(data.admins.slice(2, 4).map((p) => p.id));
         setSelectedAdmin(data.admins[0]?.id || "");
       })
       .catch((e) => {
@@ -219,7 +221,8 @@ export function SchedulePage({
       const result = await post<Detail>(`schedules/${period.id}/`, {
         version: period.version,
         source,
-        admins: autoIds.map(Number),
+        day_admins: dayIds.map(Number),
+        night_admins: nightIds.map(Number),
         slots: Object.entries(draft).map(([key, person]) => {
           const [date, type] = key.split("/");
           return { date, type, admin_id: person ? Number(person.id) : null };
@@ -237,13 +240,16 @@ export function SchedulePage({
       const result = await post<{
         plan: Plan;
         warning: string;
-        admins: string[];
+        dayAdmins: string[];
+        nightAdmins: string[];
       }>(`schedules/${period.id}/generate/`, {
         version: period.version,
-        admins: autoIds.map(Number),
+        day_admins: dayIds.map(Number),
+        night_admins: nightIds.map(Number),
       });
       setDraft(result.plan);
-      setAutoIds(result.admins);
+      setDayIds(result.dayAdmins);
+      setNightIds(result.nightAdmins);
       setSource("automatic");
       markDirty(true);
       setMessage(
@@ -502,28 +508,52 @@ export function SchedulePage({
                     <details>
                       <summary>Автозаполнение 2/2</summary>
                       <p>
-                        Четыре позиции: два администратора работают два дня,
-                        затем их сменяет вторая пара. Цикл продолжается между
-                        периодами. Выберите до четырёх сотрудников.
+                        Выберите до двух дневных и до двух ночных
+                        администраторов. В каждом списке сотрудники чередуются
+                        по циклу 2/2. Недостающие позиции займёт администратор
+                        по умолчанию.
                       </p>
-                      {overview.admins.map((p) => (
-                        <label className="schedule-choice" key={p.id}>
-                          <input
-                            type="checkbox"
-                            checked={autoIds.includes(p.id)}
-                            disabled={
-                              !autoIds.includes(p.id) && autoIds.length >= 4
-                            }
-                            onChange={(e) =>
-                              setAutoIds((value) =>
-                                e.target.checked
-                                  ? [...value, p.id]
-                                  : value.filter((id) => id !== p.id),
-                              )
-                            }
-                          />
-                          {p.name}
-                        </label>
+                      {(
+                        [
+                          [
+                            "Дневные администраторы",
+                            dayIds,
+                            setDayIds,
+                            nightIds,
+                          ],
+                          [
+                            "Ночные администраторы",
+                            nightIds,
+                            setNightIds,
+                            dayIds,
+                          ],
+                        ] as const
+                      ).map(([label, ids, setIds, otherIds]) => (
+                        <fieldset key={label}>
+                          <legend>
+                            {label} · {ids.length}/2
+                          </legend>
+                          {overview.admins.map((p) => (
+                            <label className="schedule-choice" key={p.id}>
+                              <input
+                                type="checkbox"
+                                checked={ids.includes(p.id)}
+                                disabled={
+                                  !ids.includes(p.id) &&
+                                  (ids.length >= 2 || otherIds.includes(p.id))
+                                }
+                                onChange={(e) =>
+                                  setIds((value) =>
+                                    e.target.checked
+                                      ? [...value, p.id]
+                                      : value.filter((id) => id !== p.id),
+                                  )
+                                }
+                              />
+                              {p.name}
+                            </label>
+                          ))}
+                        </fieldset>
                       ))}
                       <p>
                         Для недостающих позиций:{" "}
@@ -683,7 +713,7 @@ export function SchedulePage({
               <summary>Администратор по умолчанию</summary>
               <p>
                 Назначается на свободные позиции автозаполнения, если выбрано
-                меньше четырёх сотрудников.
+                меньше двух дневных или меньше двух ночных администраторов.
               </p>
               <label className="cp-field">
                 Сотрудник

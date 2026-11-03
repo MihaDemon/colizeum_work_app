@@ -134,6 +134,45 @@ export default function LiveWorkspace({
       let path = "";
       const body = new FormData();
       switch (action.type) {
+        case "EDIT_EXPENSE":
+          path = `shift-expenses/${action.expenseId}/`;
+          body.append("version", action.version);
+          body.append("amount", action.amount.toFixed(2));
+          body.append("description", action.description);
+          body.append("remove_photo", String(action.removePhoto));
+          await attach(body, "photo", action.photo);
+          break;
+        case "EDIT_SHIFT":
+          path = `shifts/${action.shiftId}/edit/`;
+          body.append("version", action.version);
+          body.append("admin_id", action.adminId || "");
+          body.append("shift_type", action.shiftType);
+          body.append("schedule_date", action.scheduleDate);
+          if (action.openedAt) body.append("opened_at", action.openedAt);
+          if (action.closedAt) body.append("closed_at", action.closedAt);
+          body.append("cash", action.cash.toFixed(2));
+          body.append("cards", action.cards.toFixed(2));
+          body.append("sbp", action.sbp.toFixed(2));
+          body.append("info", action.info);
+          body.append("forced_close_reason", action.forcedCloseReason);
+          body.append(
+            "photo_labels",
+            JSON.stringify(
+              action.photos
+                .filter((p) => p.url.startsWith("data:image/"))
+                .map((p) => p.label),
+            ),
+          );
+          body.append(
+            "retained_photo_labels",
+            JSON.stringify(
+              Object.fromEntries(
+                action.photos.filter((p) => p.id).map((p) => [p.id, p.label]),
+              ),
+            ),
+          );
+          await attachPhotos(body, action.photos, true);
+          break;
         case "DELETE_TASK":
           path = `tasks/${action.taskId}/`;
           break;
