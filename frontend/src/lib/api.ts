@@ -129,7 +129,10 @@ export async function request<T>(
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({
-      detail: `Ошибка сервера (${response.status}). Повторите попытку.`,
+      detail:
+        response.status === 413
+          ? "Сервер отклонил размер отправки (HTTP 413). Передайте эту ошибку управляющему."
+          : `Ошибка сервера (${response.status}). Повторите попытку.`,
     }));
     if (response.status === 401 && token && typeof window !== "undefined") {
       window.dispatchEvent(new Event("session-expired"));
