@@ -789,6 +789,185 @@ test("closing a shift uses its configured named fields", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("closing with two 2 MB photos works when data URL fetch is unavailable", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, options) => {
+      if (typeof input === "string" && input.startsWith("data:"))
+        return Promise.reject(new TypeError("Load failed"));
+      return originalFetch(input, options);
+    };
+  });
+  const largePhoto = Buffer.concat([
+    photo,
+    Buffer.alloc(2 * 1024 * 1024 - photo.length, 0x5a),
+  ]);
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  for (const label of ["Наличные: сумма", "Карта: сумма", "СБП: сумма"])
+    await page.getByLabel(label, { exact: true }).fill("10.50");
+  for (const label of ["Стол администратора", "Чек закрытия смены"]) {
+    await page.getByLabel(label, { exact: true }).setInputFiles({
+      name: "large-photo.png",
+      mimeType: "image/png",
+      buffer: largePhoto,
+    });
+    await expect(
+      page.getByRole("img", { name: label, exact: true }),
+    ).toBeVisible();
+  }
+  const sent = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/api/shifts/shift-1/close/") &&
+      request.method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
+  ).toBeVisible();
+  const command = await sent;
+  const form = await new Response(new Uint8Array(command.postDataBuffer()!), {
+    headers: { "Content-Type": command.headers()["content-type"] },
+  }).formData();
+  const images = form.getAll("photos") as File[];
+  expect(images).toHaveLength(2);
+  for (const image of images) {
+    expect(image.size).toBe(2 * 1024 * 1024);
+    expect(Buffer.from(await image.arrayBuffer()).equals(largePhoto)).toBe(
+      true,
+    );
+  }
+  expect(form.get("photo_slots")).toBe('["desk","receipt"]');
+  expect(command.headers()["idempotency-key"]).toBeTruthy();
+});
+
+test("photo preparation failure names the photo, preserves the close form and allows retry", async ({
+  page,
+}) => {
+  await setup(page);
+  let submitted = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/shifts/shift-1/close/")) submitted++;
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  for (const label of ["Наличные: сумма", "Карта: сумма", "СБП: сумма"])
+    await page.getByLabel(label, { exact: true }).fill("10.50");
+  for (const label of ["Стол администратора", "Чек закрытия смены"]) {
+    await page
+      .getByLabel(label, { exact: true })
+      .setInputFiles({
+        name: "photo.png",
+        mimeType: "image/png",
+        buffer: photo,
+      });
+    await expect(
+      page.getByRole("img", { name: label, exact: true }),
+    ).toBeVisible();
+  }
+  await page.evaluate(() => {
+    const original = window.atob;
+    window.atob = () => {
+      throw new Error("Cannot decode photo");
+    };
+    Object.assign(window, {
+      restorePhotoDecoder: () => {
+        window.atob = original;
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Не удалось подготовить фото «Стол администратора» к отправке",
+  );
+  expect(submitted).toBe(0);
+  await expect(page.getByLabel("Наличные: сумма", { exact: true })).toHaveValue(
+    "10.50",
+  );
+  await expect(
+    page.getByRole("img", { name: "Чек закрытия смены", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    (
+      window as unknown as { restorePhotoDecoder: () => void }
+    ).restorePhotoDecoder(),
+  );
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
+  ).toBeVisible();
+  expect(submitted).toBe(1);
+});
+
+test("a failed upload preserves photos and reuses its operation key on manual retry", async ({
+  page,
+}) => {
+  await setup(page);
+  const attempts: { key: string; bytes: Buffer }[] = [];
+  await page.route("**/api/shifts/shift-1/close/", async (route) => {
+    attempts.push({
+      key: route.request().headers()["idempotency-key"],
+      bytes: route.request().postDataBuffer()!,
+    });
+    if (attempts.length === 1) return route.abort("failed");
+    await route.fallback();
+  });
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  for (const label of ["Наличные: сумма", "Карта: сумма", "СБП: сумма"])
+    await page.getByLabel(label, { exact: true }).fill("10.50");
+  for (const label of ["Стол администратора", "Чек закрытия смены"]) {
+    await page
+      .getByLabel(label, { exact: true })
+      .setInputFiles({
+        name: "photo.png",
+        mimeType: "image/png",
+        buffer: photo,
+      });
+    await expect(
+      page.getByRole("img", { name: label, exact: true }),
+    ).toBeVisible();
+  }
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("Нет связи с сервером");
+  expect(attempts).toHaveLength(1);
+  await expect(page.getByLabel("Наличные: сумма", { exact: true })).toHaveValue(
+    "10.50",
+  );
+  for (const label of ["Стол администратора", "Чек закрытия смены"])
+    await expect(
+      page.getByRole("img", { name: label, exact: true }),
+    ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Закрыть смену", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Открыть смену", exact: true }),
+  ).toBeVisible();
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].key).toBeTruthy();
+  expect(attempts[1].key).toBe(attempts[0].key);
+  for (const attempt of attempts)
+    expect(attempt.bytes.includes(photo)).toBe(true);
+});
+
 test("task creation supports specified photo fields", async ({
   page,
 }, info) => {

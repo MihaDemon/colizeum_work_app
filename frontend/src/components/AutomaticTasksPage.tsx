@@ -6,6 +6,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { request as apiRequest } from "../lib/api";
+import { attachPhoto } from "../lib/photo-upload";
 import { TrainingRequest } from "../tutorial/context";
 import { confirmAction, haptic } from "../lib/telegram";
 import { useDraft } from "../lib/useDraft";
@@ -447,14 +448,7 @@ function TemplateForm({
               typeof value === "object" ? JSON.stringify(value) : String(value),
             ),
           );
-          if (reference.startsWith("data:image/")) {
-            const image = await (await fetch(reference)).blob();
-            body.append(
-              "reference_photo",
-              image,
-              `reference.${image.type.split("/")[1]}`,
-            );
-          }
+          attachPhoto(body, "reference_photo", reference, "Фото-пример");
           const saved = await request<Template>(
             `automatic-tasks/${template ? `${template.id}/` : ""}`,
             {

@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Workspace from "./pages/Workspace";
-import type {
-  Action,
-  EvidencePhoto,
-  StaffMember,
-  State,
-} from "./lib/workspace";
+import type { Action, StaffMember, State } from "./lib/workspace";
 import { ApiError, request } from "./lib/api";
+import { attachPhoto as attach, attachPhotos } from "./lib/photo-upload";
 import type { User } from "./lib/types";
 import { Loading } from "./components/UI";
 import { TutorialInvite } from "./tutorial/Tutorial";
@@ -20,31 +16,6 @@ interface Snapshot {
 
 const REFRESH_INTERVAL_MS = 3000;
 const REFRESH_TIMEOUT_MS = 10000;
-
-async function attach(body: FormData, field: string, value?: string) {
-  if (!value?.startsWith("data:image/")) return;
-  const blob = await (await fetch(value)).blob();
-  const extension =
-    blob.type === "image/jpeg" ? "jpg" : blob.type.split("/")[1];
-  body.append(field, blob, `${field}.${extension}`);
-}
-
-async function attachPhotos(
-  body: FormData,
-  photos: EvidencePhoto[],
-  retain = false,
-) {
-  const slots: string[] = [];
-  const retained: string[] = [];
-  for (const photo of photos) {
-    if (photo.url.startsWith("data:image/")) {
-      await attach(body, "photos", photo.url);
-      slots.push(photo.slot);
-    } else if (photo.id) retained.push(photo.id);
-  }
-  body.append("photo_slots", JSON.stringify(slots));
-  if (retain) body.append("retained_photos", JSON.stringify(retained));
-}
 
 export default function LiveWorkspace({
   account,

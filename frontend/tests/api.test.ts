@@ -96,6 +96,25 @@ describe("API transport", () => {
     );
     await expect(request("reports/")).rejects.toBeInstanceOf(ApiError);
   });
+  it("identifies a gateway upload-size rejection even when nginx returns HTML", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<h1>413 Request Entity Too Large</h1>", {
+          status: 413,
+          headers: { "Content-Type": "text/html" },
+        }),
+      ),
+    );
+    await expect(
+      request("shifts/1/close/", { method: "POST", body: new FormData() }),
+    ).rejects.toMatchObject({
+      status: 413,
+      message: expect.stringContaining(
+        "Сервер отклонил размер отправки (HTTP 413)",
+      ),
+    });
+  });
 });
 describe("QR lookup", () => {
   it("recognizes gamepads by their serial number", () => {
